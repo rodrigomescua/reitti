@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reitti - Your Location Timeline</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel= "stylesheet" href= "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css" >
+    <link rel= "stylesheet" href= "/css/main.css" >
+    <link rel= "stylesheet" href= "/css/date-picker.css" >
+    <script src="/js/HumanizeDuration.js"></script>
+    <script src="/js/horizontal-date-picker.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+        }
+
+        header {
+            position: absolute;
+            top: 0;
+            left: 40%;
+            z-index: 10;
+            background: rgba(59, 59, 59, 0.62);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 0 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            height: 60px;
+            border-bottom-left-radius: 10px;
+            border-bottom-right-radius: 10px;
+        }
+
+        nav {
+            display: flex;
+            gap: 20px;
+        }
+
+        .nav-link {
+            color: white;
+            text-decoration: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: background-color 0.2s;
+        }
+
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+
+        #map {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+
+        .timeline::-webkit-scrollbar {
+            display: none;
+        }
+
+        .timeline {
+            position: absolute;
+            top: 0;
+            width: 50%;
+            bottom: 0;
+            background: #3b3b3b;
+            background: linear-gradient(90deg, rgb(17, 17, 17) 0%, rgba(59, 59, 59, 0.49) 76%, rgba(255, 255, 255, 0) 100%);
+            z-index: 5;
+            overflow-y: auto;
+            pointer-events: none;
+            -ms-overflow-style: none; /* IE and Edge */
+            scrollbar-width: none; /* Firefox */
+
+        }
+
+        .timeline-container {
+            pointer-events: all;
+            width: 350px;
+            font-family: "Serif";
+            padding-bottom: 250px;
+        }
+        .timeline-entry {
+            color: #bfbfbf;
+            padding: 1rem 2rem;
+            transition: color, padding 0.5s ease-in-out;
+            font-weight: lighter;
+        }
+        .timeline-entry.active {
+            color: #f8f8f8;
+            padding: 1rem 2.5rem;
+            transition: color, padding 0.5s ease-in-out;
+        }
+
+        .timeline-entry .entry-description {
+            font-family: "Fraunces";
+            font-size: 3rem;
+            transition: font-size 0.5s ease-in-out;
+        }
+
+        .timeline-entry .entry-icon {
+            padding: 8px;
+        }
+
+        .timeline-entry .entry-time {
+            padding: 0 32px;
+        }
+
+        .timeline-entry.active .entry-description {
+            font-family: "Fraunces";
+            font-size: 5rem;
+            transition: font-size 0.5s ease-in-out;
+        }
+
+        .htmx-request .htmx-indicator {
+            display: inline;
+        }
+
+        button {
+            background-color: transparent;
+            color: wheat;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #959595;
+        }
+
+        .timeline-header {
+            display: inline-flex;
+            align-items: baseline;
+            padding: 8px;
+            border-bottom: 1px black;
+            margin-left: 2rem;
+            pointer-events: auto;
+        }
+
+        .timeline-header {
+            position: sticky;
+            font-size: 1.4rem;
+        }
+
+        .date-item.selected {
+            background-color: unset;
+            color: wheat;
+            transform: scale(1.05);
+            box-shadow: unset;
+        }
+
+        .month-item.selected {
+            background-color: #4a89dc;
+            color: wheat;
+            font-weight: bolder;
+            background: unset;
+        }
+
+        .year-item.selected {
+            background-color: #4a89dc;
+            color: wheat;
+            font-weight: bolder;
+            background: unset;
+        }
+        .today-button {
+            background-color: unset;
+        }
+        .date-item {
+            padding: unset;
+            margin: unset;
+            border-radius: 0;
+        }
+        .date-item:hover {
+            background-color: unset;
+            border-bottom: 1px solid white;
+        }
+
+        .date-item.selected:hover {
+            border-bottom: 0;
+        }
+
+        .date-item .day-name,
+        .date-item .day-number {
+            font-size: 2rem;
+            font-weight: lighter;
+        }
+        .horizontal-date-picker {
+            position: fixed;
+            font-family: "Fraunces";
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: rgba(59, 59, 59, 0.68);
+            backdrop-filter: blur(10px);
+            padding: 10px 0;
+            z-index: 50;
+            box-shadow: unset;
+        }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+
+
+<div class="timeline">
+    <span class="timeline-header">
+        <a href="/" class="nav-link"><i class="fas fa-house-flag"></i></a>
+        <a href="/settings" class="nav-link"><i class="fas fa-cog"></i></a>
+        <form th:action="@{/logout}" method="post" style="display: inline;">
+            <button type="submit" class="nav-link" style="background: none; border: none; cursor: pointer;"><i class="fas fa-right-from-bracket"></i>
+            </button>
+        </form>
+    </span>
+
+    <div class="timeline-container">
+        <div id="loading-indicator" style="display: none;">Loading...</div>
+        <!-- Timeline entries will be loaded here -->
+    </div>
+</div>
+
+<!-- Horizontal date picker will be initialized here -->
+<div id="horizontal-date-picker-container"></div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // Check if date is in URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        let initialDate;
+
+        if (urlParams.has('date')) {
+            initialDate = urlParams.get('date');
+            // Validate date format (YYYY-MM-DD)
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(initialDate)) {
+                initialDate = null;
+            }
+        }
+
+        // Set date picker to URL date or today's date
+        const today = new Date();
+        const formattedDate = initialDate || today.toISOString().split('T')[0]; // YYYY-MM-DD format
+
+        // Function to update URL with date parameter
+        function updateUrlWithDate(date) {
+            const url = new URL(window.location);
+            url.searchParams.set('date', date);
+            window.history.pushState({}, '', url);
+        }
+
+        // Initialize the map
+        const map = L.map('map').setView([60.1699, 24.9384], 12); // Helsinki coordinates as default
+
+        L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png', {
+            maxZoom: 20,
+            attribution: '&copy; <a href="https://stadiamaps.com/" target="_blank">Stadia Maps</a> &copy; <a href="https://openmaptiles.org/" target="_blank">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+        }).addTo(map);
+
+        // Add scale control
+        L.control.scale({
+            imperial: false,
+            metric: true
+        }).addTo(map);
+
+        // Function to load timeline data
+        function loadTimelineData(date) {
+            const loadingIndicator = document.getElementById('loading-indicator');
+            loadingIndicator.style.display = 'block';
+
+            fetch(`/api/timeline?selectedDate=${date}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    updateTimeline(data);
+                    loadingIndicator.style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error fetching timeline data:', error);
+                    loadingIndicator.style.display = 'none';
+                });
+        }
+
+        const selectedPath = L.polyline([], {
+            color: '#ff984f',
+            weight: 6,
+            opacity: 1,
+            lineJoin: 'round',
+            lineCap: 'round'
+        })
+
+        // Function to update the timeline with fetched data
+        function updateTimeline(data) {
+            const timelineContainer = document.querySelector('.timeline-container');
+            const loadingIndicator = document.getElementById('loading-indicator');
+            timelineContainer.innerHTML = '';
+            timelineContainer.appendChild(loadingIndicator);
+
+            // Clear existing markers and paths
+            map.eachLayer(layer => {
+                if (!layer._url) {
+                    map.removeLayer(layer);
+                }
+            });
+
+            if (!data || !data.entries || data.entries.length === 0) {
+                const noDataMsg = document.createElement('div');
+                noDataMsg.className = 'timeline-entry';
+                noDataMsg.textContent = 'No timeline data available for this date.';
+                timelineContainer.appendChild(noDataMsg);
+                return;
+            }
+
+            const bounds = L.latLngBounds();
+
+            let hasValidCoords = false;
+
+            // Create timeline entries
+            data.entries.forEach(entry => {
+                const entryElement = document.createElement('div');
+                entryElement.className = `timeline-entry ${entry.type.toLowerCase()}`;
+                entryElement.dataset.id = entry.id;
+
+                // Set coordinates based on entry type
+                if (entry.type === 'VISIT' && entry.place) {
+                    entryElement.dataset.lat = entry.place.latitude;
+                    entryElement.dataset.lng = entry.place.longitude;
+                } else if (entry.type === 'TRIP') {
+                    // For trips, use start place coordinates
+                    if (entry.startPlace) {
+                        entryElement.dataset.lat = entry.startPlace.latitude;
+                        entryElement.dataset.lng = entry.startPlace.longitude;
+                    }
+
+                    // If trip has path data, add it
+                    if (entry.path) {
+                        entryElement.dataset.path = JSON.stringify(entry.path);
+                    }
+                }
+
+                // Create icon element
+                const iconElement = document.createElement('span');
+                iconElement.className = 'entry-icon';
+                iconElement.innerHTML = entry.type === 'VISIT' ? '<i class="fas fa-map-marker-alt"></i>' : '<i class="fas fa-route"></i>';
+
+                // Create time element
+                const timeElement = document.createElement('div');
+                timeElement.className = 'entry-time';
+                const startTime = new Date(entry.startTime);
+                const endTime = new Date(entry.endTime);
+                timeElement.textContent = `${startTime.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                })} - ${endTime.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: false
+                })}`;
+
+                // Calculate duration
+                const durationMs = endTime - startTime;
+                const durationText = humanizeDuration(durationMs, {units: ["h", "m"], round: true });
+
+                const durationElement = document.createElement('span');
+                durationElement.className = 'entry-duration';
+                durationElement.textContent = `Duration: ${durationText}`;
+
+                // Create description element
+                const descElement = document.createElement('div');
+                descElement.className = 'entry-description';
+
+                // Create details element
+                const detailsElement = document.createElement('div');
+                detailsElement.className = 'entry-details';
+
+                if (entry.type === 'VISIT') {
+                    const placeName = entry.place ? entry.place.name || 'Unknown Place' : 'Unknown Place';
+                    descElement.textContent = placeName;
+
+                    if (entry.place && entry.place.address) {
+                        detailsElement.textContent = entry.place.address;
+                    }
+
+                    if (entry.place && entry.place.category) {
+                        const categorySpan = document.createElement('span');
+                        categorySpan.style.display = 'block';
+                        categorySpan.style.marginTop = '5px';
+                        categorySpan.style.fontStyle = 'italic';
+                        categorySpan.textContent = entry.place.category;
+                        detailsElement.appendChild(categorySpan);
+                    }
+                } else if (entry.type === 'TRIP') {
+                    const startName = entry.startPlace ? entry.startPlace.name || 'Unknown' : 'Unknown';
+                    const endName = entry.endPlace ? entry.endPlace.name || 'Unknown' : 'Unknown';
+                    descElement.textContent = `Trip`;
+                    detailsElement.innerHTML = `<strong>From:</strong> ${startName}<br><strong>To:</strong> ${endName}`;
+
+                    // Add distance if available
+                    if (entry.distanceMeters) {
+                        const distanceKm = (entry.distanceMeters / 1000).toFixed(1);
+                        durationElement.textContent = `Distance: ${distanceKm} km`;
+                    }
+                }
+
+                // Add elements to entry
+                entryElement.appendChild(descElement);
+                entryElement.appendChild(iconElement);
+                entryElement.appendChild(durationElement);
+                entryElement.appendChild(timeElement);
+
+                // Add entry to timeline
+                timelineContainer.appendChild(entryElement);
+
+                // Add markers for each entry with coordinates
+                const lat = parseFloat(entryElement.dataset.lat);
+                const lng = parseFloat(entryElement.dataset.lng);
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    // Determine marker color based on entry type
+                    const markerColor = entry.type === 'VISIT' ? '#4a89dc' : '#e67e22';
+
+                    // Create marker with custom icon
+                    const marker = L.circleMarker([lat, lng], {
+                        radius: 8,
+                        fillColor: markerColor,
+                        color: '#fff',
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    }).addTo(map);
+
+                    L.circle([lat, lng], {
+                        color: '#4a89dc',
+                        fillColor: '#6098e3',
+                        fillOpacity: 0.1,
+                        radius: 30
+                    }).addTo(map);
+
+                    // Add popup with basic info
+                    const popupContent = entry.type === 'VISIT'
+                        ? `<b>${entry.place?.name || 'Unknown Place'}</b><br>${timeElement.textContent}`
+                        : `<b>Trip</b><br>${timeElement.textContent}`;
+
+                    marker.bindPopup(popupContent);
+
+                    // Extend bounds for map fitting
+                    bounds.extend([lat, lng]);
+                    hasValidCoords = true;
+                }
+
+                // If entry has a path, add it to the map
+                if (entryElement.dataset.path) {
+                    try {
+                        const pathData = JSON.parse(entryElement.dataset.path);
+                        const latlngs = pathData.map(coord => [coord.latitude, coord.longitude]);
+
+                        // Create polyline
+                        L.polyline(latlngs, {
+                            color: '#4f73ff',
+                            weight: 2,
+                            opacity: 0.8,
+                            lineJoin: 'round',
+                            lineCap: 'round'
+                        }).addTo(map);
+
+                        // Extend bounds with all path points
+                        latlngs.forEach(latlng => {
+                            bounds.extend(latlng);
+                            hasValidCoords = true;
+                        });
+                    } catch (e) {
+                        console.error("Error parsing path data:", e);
+                    }
+                }
+            });
+
+            // Fit map to bounds if we have valid coordinates
+            if (hasValidCoords) {
+                map.fitBounds(bounds, {
+                    padding: [50, 50],
+                    maxZoom: 16
+                });
+            }
+        }
+
+        // Handle clicks on timeline entries
+        document.querySelector('.timeline-container').addEventListener('click', function (event) {
+            document.querySelectorAll('.timeline-container .timeline-entry')
+                .forEach(entry => entry.classList.remove('active'));
+            const entry = event.target.closest('.timeline-entry');
+            entry.classList.add('active');
+            if (entry) {
+                selectedPath.remove();
+                const newBounds = L.latLngBounds();
+
+                const lat = parseFloat(entry.dataset.lat);
+                const lng = parseFloat(entry.dataset.lng);
+
+                if (entry.dataset.path) {
+                    const pathData = JSON.parse(entry.dataset.path);
+                    const latlngs = pathData.map(coord => [coord.latitude, coord.longitude]);
+                    latlngs.forEach(latlng => {
+                        newBounds.extend(latlng);
+                    });
+                    selectedPath.setLatLngs(latlngs);
+
+                    selectedPath.addTo(map)
+                }
+                newBounds.extend([lat, lng]);
+                map.flyToBounds(newBounds, {
+                    padding: [50, 50],
+                    maxZoom: 16
+                });
+            }
+        });
+
+        loadTimelineData(formattedDate);
+        
+        // Parse the initial date properly to ensure correct date picker initialization
+        let dateToUse = new Date();
+        if (initialDate) {
+            // Parse the date from URL parameter (YYYY-MM-DD format)
+            const [year, month, day] = initialDate.split('-').map(Number);
+            // Note: month is 0-indexed in JavaScript Date
+            dateToUse = new Date(year, month - 1, day);
+        }
+        
+        // Initialize horizontal date picker
+        new HorizontalDatePicker({
+            container: document.getElementById('horizontal-date-picker-container'),
+            selectedDate: dateToUse,
+            autoSelectOnScroll: true, // Enable auto-select on scroll
+            showNavButtons: false, // Show navigation buttons
+            daysToShow: 21, // Show more days
+            showMonthRow: true, // Enable month selection row
+            showYearRow: true, // Enable year selection row
+            yearsToShow: 5, // Show 5 years in the year row
+            allowFutureDates: false, // Disable selection of future dates
+            showTodayButton: true, // Show the Today button
+            // No min/max date for infinite scrolling
+            onDateSelect: (date, formattedDate) => {
+                // Update URL
+                updateUrlWithDate(formattedDate);
+                
+                // Load timeline data
+                loadTimelineData(formattedDate);
+            }
+        });
+    });
+</script>
+</body>
+</html>
