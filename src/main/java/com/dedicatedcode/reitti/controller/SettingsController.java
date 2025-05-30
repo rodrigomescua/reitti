@@ -4,17 +4,17 @@ import com.dedicatedcode.reitti.dto.TimelineResponse;
 import com.dedicatedcode.reitti.model.ApiToken;
 import com.dedicatedcode.reitti.model.SignificantPlace;
 import com.dedicatedcode.reitti.model.User;
-import com.dedicatedcode.reitti.service.ApiTokenService;
-import com.dedicatedcode.reitti.service.PlaceService;
-import com.dedicatedcode.reitti.service.QueueStatsService;
-import com.dedicatedcode.reitti.service.UserService;
+import com.dedicatedcode.reitti.service.*;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,13 +28,16 @@ public class SettingsController {
     private final UserService userService;
     private final QueueStatsService queueStatsService;
     private final PlaceService placeService;
+    private final ImportHandler importHandler;
 
     public SettingsController(ApiTokenService apiTokenService, UserService userService, 
-                             QueueStatsService queueStatsService, PlaceService placeService) {
+                             QueueStatsService queueStatsService, PlaceService placeService,
+                             ImportHandler importHandler) {
         this.apiTokenService = apiTokenService;
         this.userService = userService;
         this.queueStatsService = queueStatsService;
         this.placeService = placeService;
+        this.importHandler = importHandler;
     }
 
     // HTMX endpoints for the settings overlay
@@ -219,5 +222,74 @@ public class SettingsController {
     public String getQueueStatsContent(Model model) {
         model.addAttribute("queueStats", queueStatsService.getQueueStats());
         return "fragments/settings :: queue-stats-content";
+    }
+    
+    @GetMapping("/file-upload-content")
+    public String getDataImportContent() {
+        return "fragments/settings :: file-upload-content";
+    }
+    
+    @PostMapping("/import/gpx")
+    public String importGpx(@RequestParam("file") MultipartFile file,
+                           Authentication authentication,
+                           Model model) {
+        String username = authentication.getName();
+        
+        if (file.isEmpty()) {
+            model.addAttribute("uploadErrorMessage", "File is empty");
+            return "fragments/settings :: file-upload-content";
+        }
+        
+        if (!file.getOriginalFilename().endsWith(".gpx")) {
+            model.addAttribute("uploadErrorMessage", "Only GPX files are supported");
+            return "fragments/settings :: file-upload-content";
+        }
+        
+        try (InputStream inputStream = file.getInputStream()) {
+            Map<String, Object> result = importHandler.importGpx(inputStream, username);
+        
+            if ((Boolean) result.get("success")) {
+                model.addAttribute("uploadSuccessMessage", result.get("message"));
+            } else {
+                model.addAttribute("uploadErrorMessage", result.get("error"));
+            }
+            
+            return "fragments/settings :: file-upload-content";
+        } catch (IOException e) {
+            model.addAttribute("uploadErrorMessage", "Error processing file: " + e.getMessage());
+            return "fragments/settings :: file-upload-content";
+        }
+    }
+    
+    @PostMapping("/import/google-takeout")
+    public String importGoogleTakeout(@RequestParam("file") MultipartFile file, 
+                                    Authentication authentication,
+                                    Model model) {
+        String username = authentication.getName();
+        
+        if (file.isEmpty()) {
+            model.addAttribute("uploadErrorMessage", "File is empty");
+            return "fragments/settings :: file-upload-content";
+        }
+        
+        if (!file.getOriginalFilename().endsWith(".json")) {
+            model.addAttribute("uploadErrorMessage", "Only JSON files are supported");
+            return "fragments/settings :: file-upload-content";
+        }
+        
+        try (InputStream inputStream = file.getInputStream()) {
+            Map<String, Object> result = importHandler.importGoogleTakeout(inputStream, username);
+        
+            if ((Boolean) result.get("success")) {
+                model.addAttribute("uploadSuccessMessage", result.get("message"));
+            } else {
+                model.addAttribute("uploadErrorMessage", result.get("error"));
+            }
+            
+            return "fragments/settings :: file-upload-content";
+        } catch (IOException e) {
+            model.addAttribute("uploadErrorMessage", "Error processing file: " + e.getMessage());
+            return "fragments/settings :: file-upload-content";
+        }
     }
 }

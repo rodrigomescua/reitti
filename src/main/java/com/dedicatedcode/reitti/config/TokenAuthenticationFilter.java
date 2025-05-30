@@ -10,6 +10,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -39,10 +40,13 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
             Optional<User> user = apiTokenService.getUserByToken(authHeader);
 
             if (user.isPresent()) {
-                Authentication authenticationToken = new UsernamePasswordAuthenticationToken(
-                        user.get().getUsername(),
-                        user.get().getPassword(),
-                        Collections.singletonList(new SimpleGrantedAuthority("ROLE_USER")));
+                User authenticatedUser = user.get();
+                UsernamePasswordAuthenticationToken authenticationToken = 
+                    new UsernamePasswordAuthenticationToken(
+                        authenticatedUser, 
+                        null,
+                        authenticatedUser.getAuthorities()
+                    );
                 SecurityContextHolder.getContext().setAuthentication(authenticationToken);
             } else {
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);

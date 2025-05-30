@@ -32,6 +32,7 @@
             <div class="settings-nav-item" data-target="user-management">User Management</div>
             <div class="settings-nav-item" data-target="places-management">Places</div>
             <div class="settings-nav-item" data-target="job-status">Job Status</div>
+            <div class="settings-nav-item" data-target="file-upload">Import Data</div>
         </div>
 
         <!-- API Tokens Section -->
@@ -104,6 +105,11 @@
         <div id="job-status" class="settings-section" hx-get="/settings/queue-stats-content"
              hx-trigger="revealed, every 5s">
             <div class="htmx-indicator">Loading queue stats...</div>
+        </div>
+
+        <!-- File Upload Section -->
+        <div id="file-upload" class="settings-section">
+            <div class="htmx-indicator">Loading file upload options...</div>
         </div>
     </div>
 </div>
@@ -188,6 +194,14 @@
                         if (target === 'places-management' && !section.hasAttribute('hx-triggered')) {
                             section.setAttribute('hx-get', '/settings/places-content?page=0');
                             section.setAttribute('hx-trigger', 'load');
+                            section.setAttribute('hx-triggered', 'true');
+                            htmx.process(section);
+                        }
+                        
+                        // If this is the file upload tab, load its content if not already loaded
+                        if (target === 'file-upload' && !section.hasAttribute('hx-triggered')) {
+                            section.setAttribute('hx-get', '/settings/file-upload-content');
+                            section.setAttribute('hx-trigger', 'load once');
                             section.setAttribute('hx-triggered', 'true');
                             htmx.process(section);
                         }
