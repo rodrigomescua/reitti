@@ -1,5 +1,6 @@
 package com.dedicatedcode.reitti.controller;
 
+import com.dedicatedcode.reitti.dto.TimelineResponse;
 import com.dedicatedcode.reitti.model.ApiToken;
 import com.dedicatedcode.reitti.model.SignificantPlace;
 import com.dedicatedcode.reitti.model.User;
@@ -13,10 +14,11 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Controller
 @RequestMapping("/settings")
@@ -35,123 +37,187 @@ public class SettingsController {
         this.placeService = placeService;
     }
 
-    @GetMapping
-    public String settings(Authentication authentication, Model model,
-                          @RequestParam(defaultValue = "0") int page,
-                          @RequestParam(required = false) String tab) {
+    // HTMX endpoints for the settings overlay
+    @GetMapping("/api-tokens-content")
+    public String getApiTokensContent(Authentication authentication, Model model) {
         User currentUser = userService.getUserByUsername(authentication.getName());
-        
-        // Load API tokens
-        List<ApiToken> tokens = apiTokenService.getTokensForUser(currentUser);
-        model.addAttribute("tokens", tokens);
-        
-        // Load users (for admin)
-        List<User> users = userService.getAllUsers();
-        model.addAttribute("users", users);
-        
-        // Load significant places with pagination (20 per page)
-        Page<SignificantPlace> places = placeService.getPlacesForUser(currentUser, PageRequest.of(page, 20));
-        model.addAttribute("places", places);
-        
-        // Load queue stats
-        model.addAttribute("queueStats", queueStatsService.getQueueStats());
-        
-        model.addAttribute("username", authentication.getName());
-        
-        // Set active tab if provided
-        if (tab != null) {
-            model.addAttribute("activeTab", tab);
-        }
-        
-        return "settings";
+        model.addAttribute("tokens", apiTokenService.getTokensForUser(currentUser));
+        return "fragments/settings :: api-tokens-content";
     }
     
+    // Original JSON endpoint kept for compatibility
+    @GetMapping("/api-tokens")
+    @ResponseBody
+    public List<ApiToken> getApiTokens(Authentication authentication) {
+        User currentUser = userService.getUserByUsername(authentication.getName());
+        return apiTokenService.getTokensForUser(currentUser);
+    }
+    
+    @GetMapping("/users-content")
+    public String getUsersContent(Authentication authentication, Model model) {
+        String currentUsername = authentication.getName();
+        List<User> users = userService.getAllUsers();
+        model.addAttribute("users", users);
+        model.addAttribute("currentUsername", currentUsername);
+        return "fragments/settings :: users-content";
+    }
+    
+    // Original JSON endpoint kept for compatibility
+    @GetMapping("/users")
+    @ResponseBody
+    public List<Map<String, Object>> getUsers(Authentication authentication) {
+        String currentUsername = authentication.getName();
+        return userService.getAllUsers().stream()
+            .map(user -> {
+                Map<String, Object> userMap = new HashMap<>();
+                userMap.put("id", user.getId());
+                userMap.put("username", user.getUsername());
+                userMap.put("displayName", user.getDisplayName());
+                userMap.put("currentUser", user.getUsername().equals(currentUsername));
+                return userMap;
+            })
+            .collect(Collectors.toList());
+    }
+    
+    @GetMapping("/places-content")
+    public String getPlacesContent(Authentication authentication, 
+                                  @RequestParam(defaultValue = "0") int page,
+                                  Model model) {
+        User currentUser = userService.getUserByUsername(authentication.getName());
+        Page<SignificantPlace> placesPage = placeService.getPlacesForUser(currentUser, PageRequest.of(page, 20));
+        
+        // Convert to PlaceInfo objects
+        List<TimelineResponse.PlaceInfo> places = placesPage.getContent().stream()
+            .map(place -> new TimelineResponse.PlaceInfo(
+                place.getId(),
+                place.getName(),
+                place.getAddress(),
+                place.getCategory(),
+                place.getLatitudeCentroid(),
+                place.getLongitudeCentroid()
+            ))
+            .collect(Collectors.toList());
+        
+        // Add pagination info to model
+        model.addAttribute("currentPage", placesPage.getNumber());
+        model.addAttribute("totalPages", placesPage.getTotalPages());
+        model.addAttribute("places", places);
+        model.addAttribute("isEmpty", places.isEmpty());
+        
+        return "fragments/settings :: places-content";
+    }
+
     @PostMapping("/tokens")
-    public String createToken(Authentication authentication, @RequestParam String name, RedirectAttributes redirectAttributes) {
+    public String createToken(Authentication authentication, @RequestParam String name, Model model) {
         User user = userService.getUserByUsername(authentication.getName());
         
         try {
             ApiToken token = apiTokenService.createToken(user, name);
-            redirectAttributes.addFlashAttribute("tokenMessage", "Token created successfully");
-            redirectAttributes.addFlashAttribute("tokenSuccess", true);
+            model.addAttribute("successMessage", "Token created successfully");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("tokenMessage", "Error creating token: " + e.getMessage());
-            redirectAttributes.addFlashAttribute("tokenSuccess", false);
+            model.addAttribute("errorMessage", "Error creating token: " + e.getMessage());
         }
         
-        return "redirect:/settings";
+        // Get updated token list and add to model
+        List<ApiToken> tokens = apiTokenService.getTokensForUser(user);
+        model.addAttribute("tokens", tokens);
+        
+        // Return the api-tokens-content fragment
+        return "fragments/settings :: api-tokens-content";
     }
     
     @PostMapping("/tokens/{tokenId}/delete")
-    public String deleteToken(@PathVariable Long tokenId, RedirectAttributes redirectAttributes) {
+    public String deleteToken(@PathVariable Long tokenId, Authentication authentication, Model model) {
+        User user = userService.getUserByUsername(authentication.getName());
+        
         try {
             apiTokenService.deleteToken(tokenId);
-            redirectAttributes.addFlashAttribute("tokenMessage", "Token deleted successfully");
-            redirectAttributes.addFlashAttribute("tokenSuccess", true);
+            model.addAttribute("successMessage", "Token deleted successfully");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("tokenMessage", "Error deleting token: " + e.getMessage());
-            redirectAttributes.addFlashAttribute("tokenSuccess", false);
+            model.addAttribute("errorMessage", "Error deleting token: " + e.getMessage());
         }
         
-        return "redirect:/settings";
+        // Get updated token list and add to model
+        List<ApiToken> tokens = apiTokenService.getTokensForUser(user);
+        model.addAttribute("tokens", tokens);
+        
+        // Return the api-tokens-content fragment
+        return "fragments/settings :: api-tokens-content";
     }
     
     @PostMapping("/users/{userId}/delete")
-    public String deleteUser(@PathVariable Long userId, Authentication authentication, RedirectAttributes redirectAttributes) {
-        try {
-            // Prevent self-deletion
-            User currentUser = userService.getUserByUsername(authentication.getName());
-            if (currentUser.getId().equals(userId)) {
-                redirectAttributes.addFlashAttribute("userMessage", "You cannot delete your own account");
-                redirectAttributes.addFlashAttribute("userSuccess", false);
-                return "redirect:/settings";
+    public String deleteUser(@PathVariable Long userId, Authentication authentication, Model model) {
+        String currentUsername = authentication.getName();
+        User currentUser = userService.getUserByUsername(currentUsername);
+        
+        // Prevent self-deletion
+        if (currentUser.getId().equals(userId)) {
+            model.addAttribute("errorMessage", "You cannot delete your own account");
+        } else {
+            try {
+                userService.deleteUser(userId);
+                model.addAttribute("successMessage", "User deleted successfully");
+            } catch (Exception e) {
+                model.addAttribute("errorMessage", "Error deleting user: " + e.getMessage());
             }
-            
-            userService.deleteUser(userId);
-            redirectAttributes.addFlashAttribute("userMessage", "User deleted successfully");
-            redirectAttributes.addFlashAttribute("userSuccess", true);
-        } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("userMessage", "Error deleting user: " + e.getMessage());
-            redirectAttributes.addFlashAttribute("userSuccess", false);
         }
         
-        return "redirect:/settings";
+        // Get updated user list and add to model
+        List<User> users = userService.getAllUsers();
+        model.addAttribute("users", users);
+        model.addAttribute("currentUsername", currentUsername);
+        
+        // Return the users-content fragment
+        return "fragments/settings :: users-content";
     }
     
     @PostMapping("/places/{placeId}/update")
-    public String updatePlace(@PathVariable Long placeId, 
-                             @RequestParam String name,
-                             Authentication authentication, 
-                             RedirectAttributes redirectAttributes,
-                             @RequestParam(defaultValue = "0") int page) {
+    @ResponseBody
+    public Map<String, Object> updatePlace(@PathVariable Long placeId, 
+                                         @RequestParam String name,
+                                         Authentication authentication) {
+        Map<String, Object> response = new HashMap<>();
+        
         try {
             User currentUser = userService.getUserByUsername(authentication.getName());
             placeService.updatePlaceName(placeId, name, currentUser);
             
-            redirectAttributes.addFlashAttribute("placeMessage", "Place updated successfully");
-            redirectAttributes.addFlashAttribute("placeSuccess", true);
+            response.put("message", "Place updated successfully");
+            response.put("success", true);
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("placeMessage", "Error updating place: " + e.getMessage());
-            redirectAttributes.addFlashAttribute("placeSuccess", false);
+            response.put("message", "Error updating place: " + e.getMessage());
+            response.put("success", false);
         }
         
-        return "redirect:/settings?tab=places-management&page=" + page;
+        return response;
     }
     
     @PostMapping("/users")
     public String createUser(@RequestParam String username,
-                            @RequestParam String displayName,
-                            @RequestParam String password,
-                            RedirectAttributes redirectAttributes) {
+                           @RequestParam String displayName,
+                           @RequestParam String password,
+                           Authentication authentication,
+                           Model model) {
+        String currentUsername = authentication.getName();
+        
         try {
             userService.createUser(username, displayName, password);
-            redirectAttributes.addFlashAttribute("userMessage", "User created successfully");
-            redirectAttributes.addFlashAttribute("userSuccess", true);
+            model.addAttribute("successMessage", "User created successfully");
         } catch (Exception e) {
-            redirectAttributes.addFlashAttribute("userMessage", "Error creating user: " + e.getMessage());
-            redirectAttributes.addFlashAttribute("userSuccess", false);
+            model.addAttribute("errorMessage", "Error creating user: " + e.getMessage());
         }
         
-        return "redirect:/settings?tab=user-management";
+        // Get updated user list and add to model
+        List<User> users = userService.getAllUsers();
+        model.addAttribute("users", users);
+        model.addAttribute("currentUsername", currentUsername);
+        
+        // Return the users-content fragment
+        return "fragments/settings :: users-content";
+    }
+    @GetMapping("/queue-stats-content")
+    public String getQueueStatsContent(Model model) {
+        model.addAttribute("queueStats", queueStatsService.getQueueStats());
+        return "fragments/settings :: queue-stats-content";
     }
 }
