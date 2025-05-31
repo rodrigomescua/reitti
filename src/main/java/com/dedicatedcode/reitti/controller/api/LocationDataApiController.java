@@ -3,6 +3,10 @@ package com.dedicatedcode.reitti.controller.api;
 import com.dedicatedcode.reitti.config.RabbitMQConfig;
 import com.dedicatedcode.reitti.dto.LocationDataRequest;
 import com.dedicatedcode.reitti.event.LocationDataEvent;
+import com.dedicatedcode.reitti.model.RawLocationPoint;
+import com.dedicatedcode.reitti.model.Trip;
+import com.dedicatedcode.reitti.model.User;
+import com.dedicatedcode.reitti.repository.RawLocationPointRepository;
 import com.dedicatedcode.reitti.service.ImportHandler;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -19,7 +23,12 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Map;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -29,13 +38,16 @@ public class LocationDataApiController {
     
     private final RabbitTemplate rabbitTemplate;
     private final ImportHandler importHandler;
+    private final RawLocationPointRepository rawLocationPointRepository;
     
     @Autowired
     public LocationDataApiController(
             RabbitTemplate rabbitTemplate,
-            ImportHandler importHandler) {
+            ImportHandler importHandler,
+            RawLocationPointRepository rawLocationPointRepository) {
         this.rabbitTemplate = rabbitTemplate;
         this.importHandler = importHandler;
+        this.rawLocationPointRepository = rawLocationPointRepository;
     }
     
     @PostMapping("/location-data")
@@ -131,6 +143,49 @@ public class LocationDataApiController {
             logger.error("Error processing GPX file", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("success", false, "error", "Error processing file: " + e.getMessage()));
+        }
+    }
+    
+    @GetMapping("/raw-location-points")
+    public ResponseEntity<?> getRawLocationPoints(@RequestParam("date") String dateStr) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        
+        try {
+            // Parse the date string (expected format: YYYY-MM-DD)
+            LocalDate date = LocalDate.parse(dateStr);
+            
+            // Create start and end instants for the day
+            Instant startOfDay = date.atStartOfDay(ZoneId.systemDefault()).toInstant();
+            Instant endOfDay = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+            
+            // Get the user from the repository
+            User user = (User) userDetails;
+            
+            // Get raw location points for the user and date range
+            List<LocationDataRequest.LocationPoint> points = rawLocationPointRepository.findByUserAndTimestampBetweenOrderByTimestampAsc(user, startOfDay, endOfDay).stream()
+                .filter(point -> !point.getTimestamp().isBefore(startOfDay) && point.getTimestamp().isBefore(endOfDay))
+                .sorted(Comparator.comparing(RawLocationPoint::getTimestamp))
+                    .map(point -> {
+                        LocationDataRequest.LocationPoint p = new LocationDataRequest.LocationPoint();
+                        p.setLatitude(point.getLatitude());
+                        p.setLongitude(point.getLongitude());
+                        p.setAccuracyMeters(point.getAccuracyMeters());
+                        p.setTimestamp(point.getTimestamp().toString());
+                        return p;
+                    })
+                    .toList();
+
+            return ResponseEntity.ok(Map.of("points", points));
+            
+        } catch (DateTimeParseException e) {
+            return ResponseEntity.badRequest().body(Map.of(
+                "error", "Invalid date format. Expected format: YYYY-MM-DD"
+            ));
+        } catch (Exception e) {
+            logger.error("Error fetching raw location points", e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "Error fetching raw location points: " + e.getMessage()));
         }
     }
 }

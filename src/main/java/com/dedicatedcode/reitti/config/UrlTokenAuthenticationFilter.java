@@ -7,38 +7,28 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
-import java.util.Collections;
 import java.util.Optional;
 
 @Component
-public class TokenAuthenticationFilter extends OncePerRequestFilter {
+public class UrlTokenAuthenticationFilter extends OncePerRequestFilter {
     private final ApiTokenService apiTokenService;
 
-    public TokenAuthenticationFilter(ApiTokenService apiTokenService) {
+    public UrlTokenAuthenticationFilter(ApiTokenService apiTokenService) {
         this.apiTokenService = apiTokenService;
     }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
+        // Extract token from URL parameter
+        String token = request.getParameter("token");
 
-        String authHeader = request.getHeader("X-API-Token");
-        if (authHeader == null) {
-            authHeader = request.getHeader("Authorization");
-            if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                authHeader = authHeader.substring(7);
-            }
-        }
-
-        if(authHeader != null) {
-            Optional<User> user = apiTokenService.getUserByToken(authHeader);
+        if (token != null && !token.isEmpty()) {
+            Optional<User> user = apiTokenService.getUserByToken(token);
 
             if (user.isPresent()) {
                 User authenticatedUser = user.get();
