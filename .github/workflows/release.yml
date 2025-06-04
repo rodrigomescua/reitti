@@ -46,10 +46,21 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-      - uses: "marvinpinto/action-automatic-releases@latest"
+      - name: Create github pre-release information
+        uses: "marvinpinto/action-automatic-releases@latest"
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: startsWith(GITHUB_REF, 'refs/tags')
+          prerelease: true
           files: |
             LICENSE.txt
             *.jar
+        if: ${{ ! startsWith(github.ref, 'refs/tags/') }}
+      - name: Create github release information
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          prerelease: false
+          files: |
+            LICENSE.txt
+            *.jar
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
