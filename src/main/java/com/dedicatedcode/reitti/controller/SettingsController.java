@@ -218,6 +218,40 @@ public class SettingsController {
         // Return the users-content fragment
         return "fragments/settings :: users-content";
     }
+    
+    @PostMapping("/users/update")
+    public String updateUser(@RequestParam Long userId,
+                           @RequestParam String username,
+                           @RequestParam String displayName,
+                           @RequestParam(required = false) String password,
+                           Authentication authentication,
+                           Model model) {
+        String currentUsername = authentication.getName();
+        User currentUser = userService.getUserById(userId);
+        boolean isCurrentUser = currentUser.getId().equals(userId);
+        
+        try {
+            userService.updateUser(userId, username, displayName, password);
+            model.addAttribute("successMessage", "User updated successfully");
+            
+            // If the current user was updated, update the authentication
+            if (isCurrentUser && !currentUsername.equals(username)) {
+                // We need to re-authenticate with the new username
+                model.addAttribute("requireRelogin", true);
+                model.addAttribute("newUsername", username);
+            }
+        } catch (Exception e) {
+            model.addAttribute("errorMessage", "Error updating user: " + e.getMessage());
+        }
+        
+        // Get updated user list and add to model
+        List<User> users = userService.getAllUsers();
+        model.addAttribute("users", users);
+        model.addAttribute("currentUsername", isCurrentUser ? username : currentUsername);
+        
+        // Return the users-content fragment
+        return "fragments/settings :: users-content";
+    }
     @GetMapping("/queue-stats-content")
     public String getQueueStatsContent(Model model) {
         model.addAttribute("queueStats", queueStatsService.getQueueStats());
@@ -229,11 +263,24 @@ public class SettingsController {
         return "fragments/settings :: file-upload-content";
     }
     
+    @GetMapping("/user-form")
+    public String getUserForm(@RequestParam(required = false) Long userId,
+                             @RequestParam(required = false) String username,
+                             @RequestParam(required = false) String displayName,
+                             Model model) {
+        if (userId != null) {
+            model.addAttribute("userId", userId);
+            model.addAttribute("username", username);
+            model.addAttribute("displayName", displayName);
+        }
+        return "fragments/settings :: user-form";
+    }
+    
     @PostMapping("/import/gpx")
     public String importGpx(@RequestParam("file") MultipartFile file,
                            Authentication authentication,
                            Model model) {
-        String username = authentication.getName();
+        User user = (User) authentication.getPrincipal();
         
         if (file.isEmpty()) {
             model.addAttribute("uploadErrorMessage", "File is empty");
@@ -246,7 +293,7 @@ public class SettingsController {
         }
         
         try (InputStream inputStream = file.getInputStream()) {
-            Map<String, Object> result = importHandler.importGpx(inputStream, username);
+            Map<String, Object> result = importHandler.importGpx(inputStream, user);
         
             if ((Boolean) result.get("success")) {
                 model.addAttribute("uploadSuccessMessage", result.get("message"));
@@ -265,7 +312,7 @@ public class SettingsController {
     public String importGoogleTakeout(@RequestParam("file") MultipartFile file, 
                                     Authentication authentication,
                                     Model model) {
-        String username = authentication.getName();
+        User user = (User) authentication.getPrincipal();
         
         if (file.isEmpty()) {
             model.addAttribute("uploadErrorMessage", "File is empty");
@@ -278,7 +325,7 @@ public class SettingsController {
         }
         
         try (InputStream inputStream = file.getInputStream()) {
-            Map<String, Object> result = importHandler.importGoogleTakeout(inputStream, username);
+            Map<String, Object> result = importHandler.importGoogleTakeout(inputStream, user);
         
             if ((Boolean) result.get("success")) {
                 model.addAttribute("uploadSuccessMessage", result.get("message"));

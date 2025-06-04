@@ -6,16 +6,17 @@
     <title>Reitti - Your Location Timeline</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
     <link rel="stylesheet" href="/css/date-picker.css">
     <link rel="stylesheet" href="/css/main.css">
+    <link rel="stylesheet" href="/css/lineicons.css">
     <script src="/js/HumanizeDuration.js"></script>
     <script src="/js/horizontal-date-picker.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap"
           rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
             integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
@@ -117,11 +118,10 @@
 
 <div class="timeline">
     <span class="timeline-header">
-        <a href="/" class="nav-link"><i class="fas fa-house-flag"></i></a>
-        <a href="#" id="settings-button" class="nav-link"><i class="fas fa-cog"></i></a>
-        <form th:action="@{/logout}" method="post" style="display: inline;">
-            <button type="submit" class="nav-link" style="background: none; border: none; cursor: pointer;"><i
-                    class="fas fa-right-from-bracket"></i>
+        <a href="#" id="settings-button" class="nav-link"><i class="lni lni-gear-1" title="open settings ..."></i></a>
+        <form th:action="@{/logout}" method="post" >
+            <button type="submit" class="nav-link" style="font-size: 1.4rem;" title="logout"><i
+                    class="lni lni-exit"></i>
             </button>
         </form>
     </span>
@@ -210,18 +210,6 @@
             });
         });
 
-        // Function to load all settings data - now handled by htmx
-        function loadSettingsData() {
-            // HTMX will automatically load the content when the tab becomes visible
-            // due to the hx-trigger="revealed" attribute
-        }
-
-        // Helper function to format date time
-        function formatDateTime(dateTimeString) {
-            const date = new Date(dateTimeString);
-            return date.toLocaleString();
-        }
-
         // Check if date is in URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         let initialDate;
@@ -304,12 +292,11 @@
 
         // Create a polyline for raw location points
         const rawPointsPath = L.polyline([], {
-            color: '#fddca1',  // Purple color for raw points
+            color: '#ecbc6f',  // Purple color for raw points
             weight: 6,
-            opacity: 1,
+            opacity: 0.5,
             lineJoin: 'round',
-            lineCap: 'round',
-            dashArray: '5, 5'  // Dashed line
+            lineCap: 'round'
         });
 
         // Function to update the timeline with fetched data
@@ -361,25 +348,53 @@
                     }
                 }
 
-                // Create icon element
-                const iconElement = document.createElement('span');
-                iconElement.className = 'entry-icon';
-                iconElement.innerHTML = entry.type === 'VISIT' ? '<i class="fas fa-map-marker-alt"></i>' : '<i class="fas fa-route"></i>';
-
                 // Create time element
                 const timeElement = document.createElement('div');
                 timeElement.className = 'entry-time';
                 const startTime = new Date(entry.startTime);
                 const endTime = new Date(entry.endTime);
-                timeElement.textContent = `${startTime.toLocaleTimeString([], {
+                
+                // Get the selected date from the URL or use today
+                const urlParams = new URLSearchParams(window.location.search);
+                let selectedDateStr = urlParams.get('date');
+                const selectedDate = selectedDateStr ? new Date(selectedDateStr) : new Date();
+                selectedDate.setHours(0, 0, 0, 0); // Set to beginning of day
+                
+                // Format start time
+                let startTimeStr = startTime.toLocaleTimeString([], {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false
-                })} - ${endTime.toLocaleTimeString([], {
+                });
+                
+                // If start time is not on the selected day, add day and month
+                if (startTime.getDate() !== selectedDate.getDate() || 
+                    startTime.getMonth() !== selectedDate.getMonth() || 
+                    startTime.getFullYear() !== selectedDate.getFullYear()) {
+                    startTimeStr = startTime.toLocaleDateString([], {
+                        day: 'numeric',
+                        month: 'short'
+                    }) + ' ' + startTimeStr;
+                }
+                
+                // Format end time
+                let endTimeStr = endTime.toLocaleTimeString([], {
                     hour: '2-digit',
                     minute: '2-digit',
                     hour12: false
-                })}`;
+                });
+                
+                // If end time is not on the selected day, add day and month
+                if (endTime.getDate() !== selectedDate.getDate() || 
+                    endTime.getMonth() !== selectedDate.getMonth() || 
+                    endTime.getFullYear() !== selectedDate.getFullYear()) {
+                    endTimeStr = endTime.toLocaleDateString([], {
+                        day: 'numeric',
+                        month: 'short'
+                    }) + ' ' + endTimeStr;
+                }
+                
+                timeElement.textContent = `${startTimeStr} - ${endTimeStr}`;
 
                 // Calculate duration
                 const durationMs = endTime - startTime;
@@ -393,42 +408,33 @@
                 const descElement = document.createElement('div');
                 descElement.className = 'entry-description';
 
-                // Create details element
-                const detailsElement = document.createElement('div');
-                detailsElement.className = 'entry-details';
-
                 if (entry.type === 'VISIT') {
-                    const placeName = entry.place ? entry.place.name || 'Unknown Place' : 'Unknown Place';
-                    descElement.textContent = placeName;
-
-                    if (entry.place && entry.place.address) {
-                        detailsElement.textContent = entry.place.address;
-                    }
-
-                    if (entry.place && entry.place.category) {
-                        const categorySpan = document.createElement('span');
-                        categorySpan.style.display = 'block';
-                        categorySpan.style.marginTop = '5px';
-                        categorySpan.style.fontStyle = 'italic';
-                        categorySpan.textContent = entry.place.category;
-                        detailsElement.appendChild(categorySpan);
-                    }
+                    descElement.textContent = entry.place ? entry.place.name || 'Unknown Place' : 'Unknown Place';
                 } else if (entry.type === 'TRIP') {
-                    const startName = entry.startPlace ? entry.startPlace.name || 'Unknown' : 'Unknown';
-                    const endName = entry.endPlace ? entry.endPlace.name || 'Unknown' : 'Unknown';
                     descElement.textContent = `Trip`;
-                    detailsElement.innerHTML = `<strong>From:</strong> ${startName}<br><strong>To:</strong> ${endName}`;
-
-                    // Add distance if available
                     if (entry.distanceMeters) {
                         const distanceKm = (entry.distanceMeters / 1000).toFixed(1);
-                        durationElement.textContent = `Distance: ${distanceKm} km`;
+                        durationElement.textContent = `Distance: ${distanceKm} km `;
+                    }
+
+                    if (entry.transportMode) {
+                        switch (entry.transportMode) {
+                            case 'WALKING':
+                                durationElement.textContent += entry.distanceMeters ? ' by foot' : ' walking';
+                                break;
+                            case 'CYCLING':
+                                durationElement.textContent += entry.distanceMeters ? ' by bike' : ' cycling';
+                                break;
+                            case 'DRIVING':
+                                durationElement.textContent += entry.distanceMeters ? ' by car' : ' driving';
+                                break;
+                        }
+
                     }
                 }
 
                 // Add elements to entry
                 entryElement.appendChild(descElement);
-                entryElement.appendChild(iconElement);
                 entryElement.appendChild(durationElement);
                 entryElement.appendChild(timeElement);
 
@@ -439,64 +445,6 @@
                 const lat = parseFloat(entryElement.dataset.lat);
                 const lng = parseFloat(entryElement.dataset.lng);
 
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    // Determine marker color based on entry type
-                    const markerColor = entry.type === 'VISIT' ? '#4a89dc' : '#e67e22';
-
-                    // Create marker with custom icon
-                    const marker = L.circleMarker([lat, lng], {
-                        radius: 8,
-                        fillColor: markerColor,
-                        color: '#fff',
-                        weight: 1,
-                        opacity: 1,
-                        fillOpacity: 0.8
-                    }).addTo(map);
-
-                    L.circle([lat, lng], {
-                        color: '#4a89dc',
-                        fillColor: '#6098e3',
-                        fillOpacity: 0.1,
-                        radius: 30
-                    }).addTo(map);
-
-                    // Add popup with basic info
-                    const popupContent = entry.type === 'VISIT'
-                        ? `<b>${entry.place?.name || 'Unknown Place'}</b><br>${timeElement.textContent}`
-                        : `<b>Trip</b><br>${timeElement.textContent}`;
-
-                    marker.bindPopup(popupContent);
-
-                    // Extend bounds for map fitting
-                    bounds.extend([lat, lng]);
-                    hasValidCoords = true;
-                }
-                //
-                // // If entry has a path, add it to the map
-                // if (entryElement.dataset.path) {
-                //     try {
-                //         const pathData = JSON.parse(entryElement.dataset.path);
-                //         const latlngs = pathData.map(coord => [coord.latitude, coord.longitude]);
-                //
-                //         // Create polyline
-                //         L.polyline(latlngs, {
-                //             color: '#4f73ff',
-                //             weight: 2,
-                //             opacity: 0.8,
-                //             lineJoin: 'round',
-                //             lineCap: 'round'
-                //         }).addTo(map);
-                //
-                //         // Extend bounds with all path points
-                //         latlngs.forEach(latlng => {
-                //             bounds.extend(latlng);
-                //             hasValidCoords = true;
-                //         });
-                //     } catch (e) {
-                //         console.error("Error parsing path data:", e);
-                //     }
-                // }
-
                 if (rawPointsData && rawPointsData.points && rawPointsData.points.length > 0) {
                     const rawPointsCoords = rawPointsData.points.map(point => [point.latitude, point.longitude]);
 
@@ -504,18 +452,6 @@
                     // Add the raw points polyline to the map
                     rawPointsPath.setLatLngs(rawPointsCoords);
                     rawPointsPath.addTo(map);
-                    //
-                    // // Add small markers for each raw point
-                    // rawPointsData.points.forEach(point => {
-                    //     L.circleMarker([point.latitude, point.longitude], {
-                    //         radius: 3,
-                    //         fillColor: '#9c27b0',
-                    //         color: '#fff',
-                    //         weight: 1,
-                    //         opacity: 0.7,
-                    //         fillOpacity: 0.7
-                    //     }).addTo(map);
-                    // });
 
                     // Extend bounds with raw points
                     const rawPointsBounds = L.latLngBounds(rawPointsCoords);
@@ -524,6 +460,55 @@
                         hasValidCoords = true;
                     }
                 }
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    // Determine marker color based on entry type
+                    const markerColor = entry.type === 'VISIT' ? '#ff6c00' : '#e67e22';
+
+                    // Calculate radius based on duration for visits
+                    let radius = 8;
+                    if (entry.type === 'VISIT') {
+                        const durationMs = new Date(entry.endTime) - new Date(entry.startTime);
+                        const durationHours = durationMs / (1000 * 60 * 60);
+                        // Scale radius based on duration: min 8, max 30
+                        radius = Math.min(30, Math.max(8, 8 + (durationHours * 2)));
+                    }
+
+                    // Create marker with custom icon
+                    const marker = L.circleMarker([lat, lng], {
+                        radius: 5,
+                        fillColor: markerColor,
+                        color: '#fff',
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8
+                    }).addTo(map);
+
+                    const circle = L.circle([lat, lng], {
+                        color: '#dcae4a',
+                        fillColor: '#ff984f',
+                        fillOpacity: 0.1,
+                        radius: radius * 5
+                    }).addTo(map);
+
+
+                    if (entry.type === 'VISIT') {
+                        const durationMs = new Date(entry.endTime) - new Date(entry.startTime);
+                        const durationText = humanizeDuration(durationMs, {units: ["h", "m"], round: true});
+                        let tooltip = L.tooltip([lat, lng], {
+                            content:
+                                `<div style="font-size: 1.4rem; color: wheat">${entry.place.name}</div>
+                             <div>Adress:<br />${entry.place.address}</div>`
+                            , className: 'visit-popup', permanent: false
+                        });
+
+                        circle.bindTooltip(tooltip);
+                    }
+                    bounds.extend([lat, lng]);
+                    hasValidCoords = true;
+                }
+
+
             });
 
             // Fit map to bounds if we have valid coordinates

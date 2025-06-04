@@ -6,6 +6,7 @@ import org.locationtech.jts.geom.Point;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 @Entity
 @Table(name = "significant_places")
@@ -38,7 +39,7 @@ public class SignificantPlace {
     private String category;
 
     @OneToMany(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Visit> visits = new ArrayList<>();
+    private List<ProcessedVisit> visits = new ArrayList<>();
 
     public SignificantPlace() {}
 
@@ -114,11 +115,11 @@ public class SignificantPlace {
         this.category = category;
     }
 
-    public List<Visit> getVisits() {
+    public List<ProcessedVisit> getVisits() {
         return visits;
     }
 
-    public void setVisits(List<Visit> visits) {
+    public void setVisits(List<ProcessedVisit> visits) {
         this.visits = visits;
     }
     
@@ -128,5 +129,27 @@ public class SignificantPlace {
     
     public void setGeom(Point geom) {
         this.geom = geom;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        SignificantPlace that = (SignificantPlace) o;
+        return Objects.equals(id, that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(id);
+    }
+
+    @Override
+    public String toString() {
+        return "SignificantPlace{" +
+                "id=" + id +
+                ", user=" + user +
+                ", name='" + name + '\'' +
+                ", geom=" + geom +
+                '}';
     }
 }

@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 @Service
@@ -52,7 +53,7 @@ public class TripMergingService {
         if (event.getStartTime() == null || event.getEndTime() == null) {
             allTrips = tripRepository.findByUser(user.orElse(null));
         } else {
-            allTrips = tripRepository.findByUserAndStartTimeBetweenOrderByStartTimeAsc(user.orElse(null), Instant.ofEpochMilli(event.getStartTime()), Instant.ofEpochMilli(event.getEndTime()));
+            allTrips = tripRepository.findByUserAndStartTimeBetweenOrderByStartTimeAsc(user.orElse(null), Instant.ofEpochMilli(event.getStartTime()).minus(1, ChronoUnit.DAYS), Instant.ofEpochMilli(event.getEndTime()).plus(1, ChronoUnit.DAYS));
         }
 
         mergeTrips(user.orElse(null), allTrips, true);
@@ -116,7 +117,7 @@ public class TripMergingService {
 
     private Trip mergeTrips(List<Trip> trips, User user) {
         // Use the first trip as a base
-        Trip baseTrip = trips.get(0);
+        Trip baseTrip = trips.getFirst();
 
         // Find the earliest start time and latest end time
         Instant earliestStart = baseTrip.getStartTime();
@@ -145,8 +146,12 @@ public class TripMergingService {
         // Set transport mode (use the most common one from the trips)
         mergedTrip.setTransportModeInferred(getMostCommonTransportMode(trips));
 
-        // Save the merged trip
-        return tripRepository.save(mergedTrip);
+        if (tripRepository.existsByUserAndStartPlaceAndEndPlaceAndStartTimeAndEndTime(user, baseTrip.getStartPlace(), baseTrip.getEndPlace(), earliestStart, latestEnd)) {
+            logger.warn("Duplicate trip found for user: {}, will ignore it.", user.getUsername());
+            return mergedTrip;
+        } else {
+            return tripRepository.save(mergedTrip);
+        }
     }
 
     private void recalculateDistance(Trip trip) {
@@ -166,7 +171,7 @@ public class TripMergingService {
             RawLocationPoint p1 = points.get(i);
             RawLocationPoint p2 = points.get(i + 1);
 
-            double distance = GeoUtils.calculateHaversineDistance(
+            double distance = GeoUtils.distanceInMeters(
                     p1.getLatitude(), p1.getLongitude(),
                     p2.getLatitude(), p2.getLongitude());
 
@@ -177,7 +182,7 @@ public class TripMergingService {
 
         // Also update the estimated distance
         if (trip.getStartPlace() != null && trip.getEndPlace() != null) {
-            double directDistance = GeoUtils.calculateHaversineDistance(
+            double directDistance = GeoUtils.distanceInMeters(
                     trip.getStartPlace().getLatitudeCentroid(), trip.getStartPlace().getLongitudeCentroid(),
                     trip.getEndPlace().getLatitudeCentroid(), trip.getEndPlace().getLongitudeCentroid());
             trip.setEstimatedDistanceMeters(directDistance);

@@ -1,8 +1,8 @@
 package com.dedicatedcode.reitti.service;
 
-import com.dedicatedcode.reitti.config.RabbitMQConfig;
 import com.dedicatedcode.reitti.dto.LocationDataRequest;
-import com.dedicatedcode.reitti.event.LocationDataEvent;
+import com.dedicatedcode.reitti.model.User;
+import org.springframework.beans.factory.annotation.Value;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
@@ -10,10 +10,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
 import org.w3c.dom.NodeList;
@@ -31,20 +29,22 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ImportHandler {
     
     private static final Logger logger = LoggerFactory.getLogger(ImportHandler.class);
-    private static final int BATCH_SIZE = 100; // Process locations in batches of 100
     
     private final ObjectMapper objectMapper;
-    private final RabbitTemplate rabbitTemplate;
-    
+    private final ImportListener importListener;
+    private final int batchSize;
+
     @Autowired
     public ImportHandler(
             ObjectMapper objectMapper,
-            RabbitTemplate rabbitTemplate) {
+            ImportListener importListener,
+            @Value("${reitti.import.batch-size:100}") int batchSize) {
         this.objectMapper = objectMapper;
-        this.rabbitTemplate = rabbitTemplate;
+        this.importListener = importListener;
+        this.batchSize = batchSize;
     }
     
-    public Map<String, Object> importGoogleTakeout(InputStream inputStream, String username) {
+    public Map<String, Object> importGoogleTakeout(InputStream inputStream, User user) {
         AtomicInteger processedCount = new AtomicInteger(0);
         
         try {
@@ -64,7 +64,7 @@ public class ImportHandler {
                         return Map.of("success", false, "error", "Invalid format: 'locations' is not an array");
                     }
                     
-                    List<LocationDataRequest.LocationPoint> batch = new ArrayList<>(BATCH_SIZE);
+                    List<LocationDataRequest.LocationPoint> batch = new ArrayList<>(batchSize);
                     
                     // Process each location in the array
                     while (parser.nextToken() != JsonToken.END_ARRAY) {
@@ -79,19 +79,8 @@ public class ImportHandler {
                                     processedCount.incrementAndGet();
                                     
                                     // Process in batches to avoid memory issues
-                                    if (batch.size() >= BATCH_SIZE) {
-                                        // Create and publish event to RabbitMQ
-                                        LocationDataEvent event = new LocationDataEvent(
-                                                username,
-                                                new ArrayList<>(batch) // Create a copy to avoid reference issues
-                                        );
-                                        
-                                        rabbitTemplate.convertAndSend(
-                                            RabbitMQConfig.EXCHANGE_NAME,
-                                            RabbitMQConfig.LOCATION_DATA_ROUTING_KEY,
-                                            event
-                                        );
-                                        
+                                    if (batch.size() >= batchSize) {
+                                        this.importListener.handleImport(user, new ArrayList<>(batch));
                                         logger.info("Queued batch of {} locations for processing", batch.size());
                                         batch.clear();
                                     }
@@ -105,18 +94,7 @@ public class ImportHandler {
                     
                     // Process any remaining locations
                     if (!batch.isEmpty()) {
-                        // Create and publish event to RabbitMQ
-                        LocationDataEvent event = new LocationDataEvent(
-                                username,
-                                new ArrayList<>(batch) // Create a copy to avoid reference issues
-                        );
-                        
-                        rabbitTemplate.convertAndSend(
-                            RabbitMQConfig.EXCHANGE_NAME,
-                            RabbitMQConfig.LOCATION_DATA_ROUTING_KEY,
-                            event
-                        );
-                        
+                        this.importListener.handleImport(user, new ArrayList<>(batch));
                         logger.info("Queued final batch of {} locations for processing", batch.size());
                     }
                     
@@ -125,7 +103,7 @@ public class ImportHandler {
             }
             
             logger.info("Successfully imported and queued {} location points from Google Takeout for user {}", 
-                    processedCount.get(), username);
+                    processedCount.get(), user.getUsername());
             
             return Map.of(
                     "success", true,
@@ -171,7 +149,7 @@ public class ImportHandler {
         return point;
     }
     
-    public Map<String, Object> importGpx(InputStream inputStream, String username) {
+    public Map<String, Object> importGpx(InputStream inputStream, User user) {
         AtomicInteger processedCount = new AtomicInteger(0);
         
         try {
@@ -185,7 +163,7 @@ public class ImportHandler {
             // Get all track points (trkpt) from the GPX file
             NodeList trackPoints = document.getElementsByTagName("trkpt");
             
-            List<LocationDataRequest.LocationPoint> batch = new ArrayList<>(BATCH_SIZE);
+            List<LocationDataRequest.LocationPoint> batch = new ArrayList<>(batchSize);
             
             // Process each track point
             for (int i = 0; i < trackPoints.getLength(); i++) {
@@ -198,19 +176,8 @@ public class ImportHandler {
                         processedCount.incrementAndGet();
                         
                         // Process in batches to avoid memory issues
-                        if (batch.size() >= BATCH_SIZE) {
-                            // Create and publish event to RabbitMQ
-                            LocationDataEvent event = new LocationDataEvent(
-                                    username,
-                                    new ArrayList<>(batch) // Create a copy to avoid reference issues
-                            );
-                            
-                            rabbitTemplate.convertAndSend(
-                                RabbitMQConfig.EXCHANGE_NAME,
-                                RabbitMQConfig.LOCATION_DATA_ROUTING_KEY,
-                                event
-                            );
-                            
+                        if (batch.size() >= batchSize) {
+                            this.importListener.handleImport(user, new ArrayList<>(batch));
                             logger.info("Queued batch of {} locations for processing", batch.size());
                             batch.clear();
                         }
@@ -224,22 +191,12 @@ public class ImportHandler {
             // Process any remaining locations
             if (!batch.isEmpty()) {
                 // Create and publish event to RabbitMQ
-                LocationDataEvent event = new LocationDataEvent(
-                        username,
-                        new ArrayList<>(batch) // Create a copy to avoid reference issues
-                );
-                
-                rabbitTemplate.convertAndSend(
-                    RabbitMQConfig.EXCHANGE_NAME,
-                    RabbitMQConfig.LOCATION_DATA_ROUTING_KEY,
-                    event
-                );
-                
+                this.importListener.handleImport(user, new ArrayList<>(batch));
                 logger.info("Queued final batch of {} locations for processing", batch.size());
             }
             
             logger.info("Successfully imported and queued {} location points from GPX file for user {}", 
-                    processedCount.get(), username);
+                    processedCount.get(), user.getUsername());
             
             return Map.of(
                     "success", true,

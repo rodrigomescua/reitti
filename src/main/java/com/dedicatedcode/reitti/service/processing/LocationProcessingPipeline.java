@@ -4,12 +4,12 @@ import com.dedicatedcode.reitti.config.RabbitMQConfig;
 import com.dedicatedcode.reitti.event.LocationDataEvent;
 import com.dedicatedcode.reitti.event.MergeVisitEvent;
 import com.dedicatedcode.reitti.model.RawLocationPoint;
-import com.dedicatedcode.reitti.model.SignificantPlace;
 import com.dedicatedcode.reitti.model.User;
 import com.dedicatedcode.reitti.repository.UserRepository;
 import com.dedicatedcode.reitti.service.LocationDataService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitMessageOperations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,7 +27,7 @@ public class LocationProcessingPipeline {
     private final UserRepository userRepository;
     private final LocationDataService locationDataService;
     private final StayPointDetectionService stayPointDetectionService;
-    private final SignificantPlaceService significantPlaceService;
+    private final VisitService visitService;
     private final RabbitMessageOperations rabbitTemplate;
     private final int tripVisitMergeTimeRange;
 
@@ -36,17 +36,18 @@ public class LocationProcessingPipeline {
             UserRepository userRepository,
             LocationDataService locationDataService,
             StayPointDetectionService stayPointDetectionService,
-            SignificantPlaceService significantPlaceService,
+            VisitService visitService,
             RabbitMessageOperations rabbitTemplate,
             @Value("${reitti.process-visits-trips.merge-time-range:1}") int tripVisitMergeTimeRange) {
         this.userRepository = userRepository;
         this.locationDataService = locationDataService;
         this.stayPointDetectionService = stayPointDetectionService;
-        this.significantPlaceService = significantPlaceService;
+        this.visitService = visitService;
         this.rabbitTemplate = rabbitTemplate;
         this.tripVisitMergeTimeRange = tripVisitMergeTimeRange;
     }
 
+    @RabbitListener(queues = RabbitMQConfig.LOCATION_DATA_QUEUE, concurrency = "4-16")
     public void processLocationData(LocationDataEvent event) {
         logger.debug("Starting processing pipeline for user {} with {} points",
                 event.getUsername(), event.getPoints().size());
@@ -75,10 +76,7 @@ public class LocationProcessingPipeline {
 
         if (!stayPoints.isEmpty()) {
             logger.trace("Detected {} stay points", stayPoints.size());
-
-            // Step 3: Update significant places based on stay points
-            List<SignificantPlace> updatedPlaces = significantPlaceService.processStayPoints(user, stayPoints);
-            logger.trace("Updated {} significant places", updatedPlaces.size());
+            visitService.processStayPoints(user, stayPoints);
 
             Instant startTime = savedPoints.stream().map(RawLocationPoint::getTimestamp).min(Instant::compareTo).orElse(Instant.now());
             Instant endTime = savedPoints.stream().map(RawLocationPoint::getTimestamp).max(Instant::compareTo).orElse(Instant.now());

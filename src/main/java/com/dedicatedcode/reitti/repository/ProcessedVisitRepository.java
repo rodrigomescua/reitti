@@ -15,7 +15,9 @@ import java.util.List;
 public interface ProcessedVisitRepository extends JpaRepository<ProcessedVisit, Long> {
     
     List<ProcessedVisit> findByUser(User user);
-    
+
+    List<ProcessedVisit> findByUserOrderByStartTime(User user);
+
     @Query("SELECT pv FROM ProcessedVisit pv WHERE pv.user = :user AND pv.place = :place " +
            "AND ((pv.startTime <= :endTime AND pv.endTime >= :startTime) OR " +
            "(pv.startTime >= :startTime AND pv.startTime <= :endTime) OR " +
@@ -25,10 +27,19 @@ public interface ProcessedVisitRepository extends JpaRepository<ProcessedVisit, 
             @Param("place") SignificantPlace place,
             @Param("startTime") Instant startTime,
             @Param("endTime") Instant endTime);
-    
+
+    @Query("SELECT pv FROM ProcessedVisit pv WHERE pv.user = :user " +
+           "AND ((pv.startTime <= :endTime AND pv.endTime >= :startTime) OR " +
+           "(pv.startTime >= :startTime AND pv.startTime <= :endTime) OR " +
+           "(pv.endTime >= :startTime AND pv.endTime <= :endTime))")
+    List<ProcessedVisit> findByUserAndTimeOverlap(
+            @Param("user") User user,
+            @Param("startTime") Instant startTime,
+            @Param("endTime") Instant endTime);
+
     List<ProcessedVisit> findByUserAndStartTimeBetweenOrderByStartTimeAsc(
             User user, Instant startTime, Instant endTime);
-    
+
     @Query("SELECT pv FROM ProcessedVisit pv WHERE pv.user = ?1 AND pv.place = ?2 AND " +
            "((pv.startTime <= ?3 AND pv.endTime >= ?3) OR " +
            "(pv.startTime <= ?4 AND pv.endTime >= ?4) OR " +
