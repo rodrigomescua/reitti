@@ -67,10 +67,12 @@ docker-compose up -d
 
 # Or run standalone with environment variables
 docker run -p 8080:8080 \
-  -e SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/reitti \
-  -e SPRING_DATASOURCE_USERNAME=postgres \
-  -e SPRING_DATASOURCE_PASSWORD=postgres \
-  -e SPRING_RABBITMQ_HOST=rabbitmq \
+  -e POSTGIS_HOST=postgres \
+  -e POSTGIS_PORT=5432 \
+  -e POSTGIS_DB=reittidb \
+  -e POSTGIS_USER=reitti \
+  -e POSTGIS_PASSWORD=reitti \
+  -e RABBITMQ_HOST=rabbitmq \
   reitti/reitti:latest
 ```
 
@@ -78,13 +80,15 @@ docker run -p 8080:8080 \
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `SPRING_DATASOURCE_URL` | JDBC URL for PostgreSQL database | jdbc:postgresql://localhost:5432/reitti |
-| `SPRING_DATASOURCE_USERNAME` | Database username | postgres |
-| `SPRING_DATASOURCE_PASSWORD` | Database password | postgres |
-| `SPRING_RABBITMQ_HOST` | RabbitMQ host | localhost |
-| `SPRING_RABBITMQ_PORT` | RabbitMQ port | 5672 |
-| `SPRING_RABBITMQ_USERNAME` | RabbitMQ username | guest |
-| `SPRING_RABBITMQ_PASSWORD` | RabbitMQ password | guest |
+| `POSTGIS_HOST` | PostgreSQL database host | postgis |
+| `POSTGIS_PORT` | PostgreSQL database port | 5432 |
+| `POSTGIS_DB` | PostgreSQL database name | reittidb |
+| `POSTGIS_USER` | Database username | reitti |
+| `POSTGIS_PASSWORD` | Database password | reitti |
+| `RABBITMQ_HOST` | RabbitMQ host | rabbitmq |
+| `RABBITMQ_PORT` | RabbitMQ port | 5672 |
+| `RABBITMQ_USER` | RabbitMQ username | reitti |
+| `RABBITMQ_PASSWORD` | RabbitMQ password | reitti |
 | `SERVER_PORT` | Application server port | 8080 |
 | `APP_UID` | User ID to run the application as | 1000 |
 | `APP_GID` | Group ID to run the application as | 1000 |
@@ -94,15 +98,6 @@ docker run -p 8080:8080 \
 
 - `latest` - Latest stable release
 - `x.y.z` - Specific version releases
-
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/import/gpx` | POST | Import GPX data files |
-| `/api/v1/queue-stats` | GET | Get processing queue statistics |
-| `/settings/import/gpx` | POST | Web interface for GPX import |
-| `/api/v1/timeline` | GET | Get timeline data |
 
 ## Data Flow
 
@@ -119,7 +114,7 @@ docker run -p 8080:8080 \
 - **Message Queue**: RabbitMQ for asynchronous processing
 - **Frontend**: Thymeleaf, JavaScript
 - **Testing**: JUnit 5, Testcontainers
-- **Containerization**: Docker, Spring Boot Docker plugin
+- **Containerization**: Docker
 
 ## Contributing
 
