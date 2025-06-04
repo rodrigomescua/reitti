@@ -49,7 +49,7 @@ jobs:
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
           repo_token: "${{ secrets.GITHUB_TOKEN }}"
-          prerelease: "${{ is_default_branch}}"
+          prerelease: "${{ startsWith(GITHUB_REF, 'refs/tags') }}"
           files: |
             LICENSE.txt
             *.jar
