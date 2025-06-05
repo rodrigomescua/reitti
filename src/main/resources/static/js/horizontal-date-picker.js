@@ -34,7 +34,12 @@ class HorizontalDatePicker {
         this.createElements();
         this.populateDates();
         this.attachEventListeners();
-        this.scrollToSelectedDate(false);
+        this.attachTouchEventListeners();
+        
+        // Scroll to selected date after a brief delay to ensure DOM is ready
+        setTimeout(() => {
+            this.scrollToSelectedDate(false);
+        }, 0);
         
         // Highlight the current month in the month row
         if (this.options.showMonthRow) {
@@ -92,10 +97,17 @@ class HorizontalDatePicker {
         const startDate = new Date(centerDate);
         startDate.setDate(centerDate.getDate() - this.options.daysBeforeToday);
         
-        // Always show exactly daysToShow days
-        for (let i = 0; i < this.options.daysToShow; i++) {
-            const date = new Date(startDate);
-            date.setDate(startDate.getDate() + i);
+        // Create more dates at the beginning for initial load (2 weeks before)
+        const extendedStartDate = new Date(startDate);
+        extendedStartDate.setDate(startDate.getDate() - 14);
+        
+        // Calculate total days to show (original + 2 weeks before + 2 weeks after)
+        const totalDaysToShow = this.options.daysToShow + 28;
+        
+        // Generate all dates including the extended range
+        for (let i = 0; i < totalDaysToShow; i++) {
+            const date = new Date(extendedStartDate);
+            date.setDate(extendedStartDate.getDate() + i);
             
             // Skip dates outside of min/max range if specified
             if ((this.options.minDate && date < new Date(this.options.minDate)) || 
@@ -106,10 +118,6 @@ class HorizontalDatePicker {
             const dateItem = this.createDateElement(date);
             this.dateContainer.appendChild(dateItem);
         }
-        
-        // Add extra dates at both ends for continuous scrolling
-        this.addMoreDatesAtStart();
-        this.addMoreDatesAtEnd();
     }
     
     attachEventListeners() {
@@ -200,6 +208,108 @@ class HorizontalDatePicker {
                 }
             }, 150);
         }, { passive: true }); // Add passive flag for better performance
+    }
+    
+    attachTouchEventListeners() {
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchStartTime = 0;
+        let isTouchScrolling = false;
+        let touchScrollTimeout;
+        
+        // Touch start
+        this.dateContainer.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            touchStartY = e.touches[0].clientY;
+            touchStartTime = Date.now();
+            isTouchScrolling = false;
+            
+            // Clear any existing timeout
+            clearTimeout(touchScrollTimeout);
+            
+            // If auto-select is enabled and not a manual selection, deselect current date
+            if (this.options.autoSelectOnScroll && !this._isManualSelection) {
+                if (this.selectedElement) {
+                    this.selectedElement.classList.remove('selected');
+                }
+            }
+        }, { passive: true });
+        
+        // Touch move
+        this.dateContainer.addEventListener('touchmove', (e) => {
+            if (!isTouchScrolling) {
+                isTouchScrolling = true;
+            }
+            
+            // Update selection during touch scrolling if auto-select is enabled
+            if (this.options.autoSelectOnScroll && !this._isManualSelection) {
+                requestAnimationFrame(() => {
+                    this.updateSelectionDuringScroll();
+                });
+            }
+            
+            // Check if we need to add more dates
+            this.checkScrollPosition();
+        }, { passive: true });
+        
+        // Touch end
+        this.dateContainer.addEventListener('touchend', (e) => {
+            const touchEndX = e.changedTouches[0].clientX;
+            const touchEndY = e.changedTouches[0].clientY;
+            const touchEndTime = Date.now();
+            
+            const deltaX = touchEndX - touchStartX;
+            const deltaY = touchEndY - touchStartY;
+            const deltaTime = touchEndTime - touchStartTime;
+            
+            // Check if this was a tap (short duration, small movement)
+            const isTap = deltaTime < 300 && Math.abs(deltaX) < 10 && Math.abs(deltaY) < 10;
+            
+            if (isTap) {
+                // Handle tap - find the date item that was tapped
+                const target = document.elementFromPoint(touchStartX, touchStartY);
+                const dateItem = target ? target.closest('.date-item') : null;
+                
+                if (dateItem) {
+                    // Check if this date is already selected
+                    if (dateItem.classList.contains('selected')) {
+                        return; // Do nothing if tapping on already selected date
+                    }
+                    
+                    // Prevent auto-selection from interfering with manual taps
+                    this._isManualSelection = true;
+                    
+                    // Clear any pending auto-selection
+                    if (this._autoSelectTimeout) {
+                        clearTimeout(this._autoSelectTimeout);
+                    }
+                    
+                    // Force selection of the tapped date
+                    this.selectDate(dateItem, true);
+                    
+                    // Reset the manual selection flag after a delay
+                    setTimeout(() => {
+                        this._isManualSelection = false;
+                    }, 500);
+                }
+            } else if (isTouchScrolling) {
+                // Handle scroll end for touch
+                touchScrollTimeout = setTimeout(() => {
+                    isTouchScrolling = false;
+                    
+                    // Only handle scroll end if not in manual selection mode
+                    if (!this._isManualSelection) {
+                        this.handleScrollEnd();
+                    }
+                }, 150);
+            }
+        }, { passive: true });
+        
+        // Handle touch cancel
+        this.dateContainer.addEventListener('touchcancel', () => {
+            isTouchScrolling = false;
+            clearTimeout(touchScrollTimeout);
+        }, { passive: true });
     }
     
     // Update selection during scrolling
