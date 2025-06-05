@@ -293,9 +293,9 @@
 
         // Create a polyline for raw location points
         const rawPointsPath = L.polyline([], {
-            color: '#ecbc6f',  // Purple color for raw points
+            color: '#f1ba63',  // Purple color for raw points
             weight: 6,
-            opacity: 0.5,
+            opacity: 0.9,
             lineJoin: 'round',
             lineCap: 'round'
         });
@@ -323,8 +323,13 @@
             }
 
             const bounds = L.latLngBounds();
+            // Store the original bounds for deselection
+            window.originalBounds = L.latLngBounds();
 
             let hasValidCoords = false;
+
+            // Group places by coordinates to avoid duplicate markers
+            const placeGroups = new Map();
 
             // Create timeline entries
             data.entries.forEach(entry => {
@@ -442,74 +447,101 @@
                 // Add entry to timeline
                 timelineContainer.appendChild(entryElement);
 
-                // Add markers for each entry with coordinates
+                // Group places by coordinates for visits
                 const lat = parseFloat(entryElement.dataset.lat);
                 const lng = parseFloat(entryElement.dataset.lng);
 
-                if (rawPointsData && rawPointsData.points && rawPointsData.points.length > 0) {
-                    const rawPointsCoords = rawPointsData.points.map(point => [point.latitude, point.longitude]);
-
-                    rawPointsPath.remove();
-                    // Add the raw points polyline to the map
-                    rawPointsPath.setLatLngs(rawPointsCoords);
-                    rawPointsPath.addTo(map);
-
-                    // Extend bounds with raw points
-                    const rawPointsBounds = L.latLngBounds(rawPointsCoords);
-                    if (rawPointsBounds.isValid()) {
-                        bounds.extend(rawPointsBounds);
-                        hasValidCoords = true;
-                    }
-                }
-
-                if (!isNaN(lat) && !isNaN(lng)) {
-                    // Determine marker color based on entry type
-                    const markerColor = entry.type === 'VISIT' ? '#ff6c00' : '#e67e22';
-
-                    // Calculate radius based on duration for visits
-                    let radius = 8;
-                    if (entry.type === 'VISIT') {
-                        const durationMs = new Date(entry.endTime) - new Date(entry.startTime);
-                        const durationHours = durationMs / (1000 * 60 * 60);
-                        // Scale radius based on duration: min 8, max 30
-                        radius = Math.min(30, Math.max(8, 8 + (durationHours * 2)));
-                    }
-
-                    // Create marker with custom icon
-                    const marker = L.circleMarker([lat, lng], {
-                        radius: 5,
-                        fillColor: markerColor,
-                        color: '#fff',
-                        weight: 1,
-                        opacity: 1,
-                        fillOpacity: 0.8
-                    }).addTo(map);
-
-                    const circle = L.circle([lat, lng], {
-                        color: '#dcae4a',
-                        fillColor: '#ff984f',
-                        fillOpacity: 0.1,
-                        radius: radius * 5
-                    }).addTo(map);
-
-
-                    if (entry.type === 'VISIT') {
-                        const durationMs = new Date(entry.endTime) - new Date(entry.startTime);
-                        const durationText = humanizeDuration(durationMs, {units: ["h", "m"], round: true});
-                        let tooltip = L.tooltip([lat, lng], {
-                            content:
-                                `<div style="font-size: 1.4rem; color: wheat">${entry.place.name}</div>
-                             <div>Adress:<br />${entry.place.address}</div>`
-                            , className: 'visit-popup', permanent: false
+                if (!isNaN(lat) && !isNaN(lng) && entry.type === 'VISIT') {
+                    const coordKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+                    
+                    if (!placeGroups.has(coordKey)) {
+                        placeGroups.set(coordKey, {
+                            lat: lat,
+                            lng: lng,
+                            totalDurationMs: 0,
+                            visits: [],
+                            place: entry.place
                         });
-
-                        circle.bindTooltip(tooltip);
                     }
+                    
+                    const group = placeGroups.get(coordKey);
+                    const durationMs = new Date(entry.endTime) - new Date(entry.startTime);
+                    group.totalDurationMs += durationMs;
+                    group.visits.push(entry);
+                    
                     bounds.extend([lat, lng]);
+                    window.originalBounds.extend([lat, lng]);
                     hasValidCoords = true;
                 }
 
+            });
 
+            // Add raw location points if available
+            if (rawPointsData && rawPointsData.points && rawPointsData.points.length > 0) {
+                const rawPointsCoords = rawPointsData.points.map(point => [point.latitude, point.longitude]);
+
+                rawPointsPath.remove();
+                // Add the raw points polyline to the map
+                rawPointsPath.setLatLngs(rawPointsCoords);
+                rawPointsPath.addTo(map);
+
+                // Extend bounds with raw points
+                const rawPointsBounds = L.latLngBounds(rawPointsCoords);
+                if (rawPointsBounds.isValid()) {
+                    bounds.extend(rawPointsBounds);
+                    window.originalBounds.extend(rawPointsBounds);
+                    hasValidCoords = true;
+                }
+            }
+
+            // Draw markers for grouped places
+            placeGroups.forEach((group, coordKey) => {
+                const { lat, lng, totalDurationMs, visits, place } = group;
+                
+                // Calculate radius using logarithmic scale to prevent extreme differences
+                // Base radius of 15m, with logarithmic scaling for duration
+                const durationHours = totalDurationMs / (1000 * 60 * 60);
+                const baseRadius = 15;
+                const maxRadius = 100;
+                const minRadius = 15;
+                
+                // Use logarithmic scale: log(1 + duration) to smooth out differences
+                const logScale = Math.log(1 + durationHours) / Math.log(1 + 24); // Normalize to 24 hours
+                const radius = Math.min(maxRadius, Math.max(minRadius, baseRadius + (logScale * (maxRadius - baseRadius))));
+
+                // Create marker
+                const marker = L.circleMarker([lat, lng], {
+                    radius: 5,
+                    fillColor: '#ff6c00',
+                    color: '#fff',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
+
+                // Create circle with calculated radius
+                const circle = L.circle([lat, lng], {
+                    color: '#dcae4a',
+                    fillColor: '#ff984f',
+                    fillOpacity: 0.1,
+                    radius: radius
+                }).addTo(map);
+
+                const totalDurationText = humanizeDuration(totalDurationMs, {units: ["h", "m"], round: true});
+                const visitCount = visits.length;
+                const visitText = visitCount === 1 ? 'visit' : 'visits';
+                
+                let tooltip = L.tooltip([lat, lng], {
+                    content: `<div style="font-size: 1.4rem; color: wheat">${place.name}</div>
+                             <div>Address:<br />${place.address}</div>
+                             <div style="margin-top: 4px; font-weight: bold;">
+                                 ${visitCount} ${visitText} - Total: ${totalDurationText}
+                             </div>`,
+                    className: 'visit-popup', 
+                    permanent: false
+                });
+
+                circle.bindTooltip(tooltip);
             });
 
             // Fit map to bounds if we have valid coordinates
@@ -523,37 +555,55 @@
 
         // Handle clicks on timeline entries
         document.querySelector('.timeline-container').addEventListener('click', function (event) {
-            document.querySelectorAll('.timeline-container .timeline-entry')
-                .forEach(entry => entry.classList.remove('active'));
             const entry = event.target.closest('.timeline-entry');
             if (!entry) return;
-                
-            entry.classList.add('active');
+            
+            // Check if this entry is already active (deselection case)
+            const isCurrentlyActive = entry.classList.contains('active');
+            
+            // Remove active class from all entries
+            document.querySelectorAll('.timeline-container .timeline-entry')
+                .forEach(e => e.classList.remove('active'));
+            
+            // Remove any selected path
             selectedPath.remove();
-            const newBounds = L.latLngBounds();
+            
+            if (isCurrentlyActive) {
+                // Deselection: zoom back to original bounds showing all data
+                if (window.originalBounds && window.originalBounds.isValid()) {
+                    map.flyToBounds(window.originalBounds, {
+                        padding: [50, 50],
+                        maxZoom: 16
+                    });
+                }
+            } else {
+                // Selection: zoom to specific entry
+                entry.classList.add('active');
+                const newBounds = L.latLngBounds();
 
-            const lat = parseFloat(entry.dataset.lat);
-            const lng = parseFloat(entry.dataset.lng);
+                const lat = parseFloat(entry.dataset.lat);
+                const lng = parseFloat(entry.dataset.lng);
 
-            if (entry.dataset.path) {
-                const pathData = JSON.parse(entry.dataset.path);
-                const latlngs = pathData.map(coord => [coord.latitude, coord.longitude]);
-                latlngs.forEach(latlng => {
-                    newBounds.extend(latlng);
-                });
-                selectedPath.setLatLngs(latlngs);
-                selectedPath.addTo(map);
-            }
-                
-            if (!isNaN(lat) && !isNaN(lng)) {
-                newBounds.extend([lat, lng]);
-            }
-                
-            if (newBounds.isValid()) {
-                map.flyToBounds(newBounds, {
-                    padding: [50, 50],
-                    maxZoom: 16
-                });
+                if (entry.dataset.path) {
+                    const pathData = JSON.parse(entry.dataset.path);
+                    const latlngs = pathData.map(coord => [coord.latitude, coord.longitude]);
+                    latlngs.forEach(latlng => {
+                        newBounds.extend(latlng);
+                    });
+                    selectedPath.setLatLngs(latlngs);
+                    selectedPath.addTo(map);
+                }
+                    
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    newBounds.extend([lat, lng]);
+                }
+                    
+                if (newBounds.isValid()) {
+                    map.flyToBounds(newBounds, {
+                        padding: [50, 50],
+                        maxZoom: 16
+                    });
+                }
             }
         });
 
