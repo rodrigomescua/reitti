@@ -5,6 +5,7 @@ import com.dedicatedcode.reitti.model.ApiToken;
 import com.dedicatedcode.reitti.model.SignificantPlace;
 import com.dedicatedcode.reitti.model.User;
 import com.dedicatedcode.reitti.service.*;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
@@ -40,22 +41,13 @@ public class SettingsController {
         this.importHandler = importHandler;
     }
 
-    // HTMX endpoints for the settings overlay
     @GetMapping("/api-tokens-content")
     public String getApiTokensContent(Authentication authentication, Model model) {
         User currentUser = userService.getUserByUsername(authentication.getName());
         model.addAttribute("tokens", apiTokenService.getTokensForUser(currentUser));
         return "fragments/settings :: api-tokens-content";
     }
-    
-    // Original JSON endpoint kept for compatibility
-    @GetMapping("/api-tokens")
-    @ResponseBody
-    public List<ApiToken> getApiTokens(Authentication authentication) {
-        User currentUser = userService.getUserByUsername(authentication.getName());
-        return apiTokenService.getTokensForUser(currentUser);
-    }
-    
+
     @GetMapping("/users-content")
     public String getUsersContent(Authentication authentication, Model model) {
         String currentUsername = authentication.getName();
@@ -64,24 +56,7 @@ public class SettingsController {
         model.addAttribute("currentUsername", currentUsername);
         return "fragments/settings :: users-content";
     }
-    
-    // Original JSON endpoint kept for compatibility
-    @GetMapping("/users")
-    @ResponseBody
-    public List<Map<String, Object>> getUsers(Authentication authentication) {
-        String currentUsername = authentication.getName();
-        return userService.getAllUsers().stream()
-            .map(user -> {
-                Map<String, Object> userMap = new HashMap<>();
-                userMap.put("id", user.getId());
-                userMap.put("username", user.getUsername());
-                userMap.put("displayName", user.getDisplayName());
-                userMap.put("currentUser", user.getUsername().equals(currentUsername));
-                return userMap;
-            })
-            .collect(Collectors.toList());
-    }
-    
+
     @GetMapping("/places-content")
     public String getPlacesContent(Authentication authentication, 
                                   @RequestParam(defaultValue = "0") int page,
@@ -261,6 +236,38 @@ public class SettingsController {
     @GetMapping("/file-upload-content")
     public String getDataImportContent() {
         return "fragments/settings :: file-upload-content";
+    }
+    
+    @GetMapping("/integrations-content")
+    public String getIntegrationsContent(Authentication authentication, Model model, HttpServletRequest request) {
+        User currentUser = userService.getUserByUsername(authentication.getName());
+        List<ApiToken> tokens = apiTokenService.getTokensForUser(currentUser);
+        
+        // Add the first token if available
+        if (!tokens.isEmpty()) {
+            model.addAttribute("firstToken", tokens.get(0).getToken());
+            model.addAttribute("hasToken", true);
+        } else {
+            model.addAttribute("hasToken", false);
+        }
+        
+        // Build the server URL
+        String scheme = request.getScheme();
+        String serverName = request.getServerName();
+        int serverPort = request.getServerPort();
+        
+        StringBuilder serverUrl = new StringBuilder();
+        serverUrl.append(scheme).append("://").append(serverName);
+        
+        // Only add port if it's not the default port for the scheme
+        if ((scheme.equals("http") && serverPort != 80) || 
+            (scheme.equals("https") && serverPort != 443)) {
+            serverUrl.append(":").append(serverPort);
+        }
+        
+        model.addAttribute("serverUrl", serverUrl.toString());
+        
+        return "fragments/settings :: integrations-content";
     }
     
     @GetMapping("/user-form")
