@@ -13,6 +13,7 @@
     <link rel="stylesheet" href="/css/lineicons.css">
     <script src="/js/HumanizeDuration.js"></script>
     <script src="/js/horizontal-date-picker.js"></script>
+    <script src="/js/timeline-scroll-indicator.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,100..900;1,9..144,100..900&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
@@ -253,6 +254,12 @@
             const loadingIndicator = document.getElementById('loading-indicator');
             loadingIndicator.style.display = 'block';
 
+            // Cleanup existing scroll indicator
+            if (window.timelineScrollIndicator) {
+                window.timelineScrollIndicator.cleanup();
+                window.timelineScrollIndicator = null;
+            }
+
             // Fetch both timeline data and raw location points
             Promise.all([
                 fetch(`/api/timeline?selectedDate=${date}`).then(response => {
@@ -276,6 +283,10 @@
             .then(([timelineData, rawPointsData]) => {
                 updateTimeline(timelineData, rawPointsData);
                 loadingIndicator.style.display = 'none';
+                
+                // Initialize scroll indicator after timeline is updated
+                window.timelineScrollIndicator = new TimelineScrollIndicator();
+                window.timelineScrollIndicator.init();
             })
             .catch(error => {
                 console.error('Error fetching data:', error);
