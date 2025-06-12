@@ -228,7 +228,7 @@
                   hx-target="#file-upload"
                   hx-encoding="multipart/form-data">
                 <div class="form-group">
-                    <input type="file" name="file" accept=".gpx" required>
+                    <input type="file" name="files" accept=".gpx" multiple required>
                 </div>
                 <button type="submit" class="btn">Upload GPX File</button>
             </form>
@@ -263,6 +263,32 @@
                 htmx.on('#takeout-upload-form', 'htmx:xhr:progress', function(evt) {
                     htmx.find('#progress-google').setAttribute('value', evt.detail.loaded/evt.detail.total * 100)
                     htmx.find('#progress-google').setAttribute('style', null)
+                });
+            </script>
+        </div>
+        
+        <div class="upload-option">
+            <h3>GeoJSON Files</h3>
+            <p class="description">
+                Upload GeoJSON files containing Point features with location data. GeoJSON files 
+                should contain Point geometries with coordinates and optional timestamp properties. 
+                Supports both single Feature and FeatureCollection formats.
+            </p>
+            <form id="geojson-upload-form"
+                  hx-post="/settings/import/geojson"
+                  hx-target="#file-upload"
+                  hx-swap="innerHTML"
+                  hx-encoding="multipart/form-data">
+                <div class="form-group">
+                    <input type="file" name="files" accept=".geojson,.json" multiple required>
+                </div>
+                <button type="submit" class="btn">Upload GeoJSON File</button>
+            </form>
+            <progress id='progress-geojson' value='0' max='100' style="display: none"></progress>
+            <script>
+                htmx.on('#geojson-upload-form', 'htmx:xhr:progress', function(evt) {
+                    htmx.find('#progress-geojson').setAttribute('value', evt.detail.loaded/evt.detail.total * 100)
+                    htmx.find('#progress-geojson').setAttribute('style', null)
                 });
             </script>
         </div>
@@ -335,6 +361,38 @@
         <div style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 4px; padding: 10px; margin-top: 10px; font-family: monospace; word-break: break-all;">
             <span th:if="${hasToken}" th:text="${firstToken}" style="color: #28a745;"></span>
             <span th:if="${!hasToken}" style="color: #6c757d;">No token available - create one in the API Tokens tab</span>
+        </div>
+    </div>
+</div>
+
+<!-- Manage Data Content Fragment -->
+<div th:fragment="manage-data-content">
+    <h2>Manage Data</h2>
+    
+    <div th:if="${successMessage}" class="alert alert-success" style="display: block;">
+        <span th:text="${successMessage}">Processing started successfully</span>
+    </div>
+    <div th:if="${errorMessage}" class="alert alert-danger" style="display: block;">
+        <span th:text="${errorMessage}">Error message</span>
+    </div>
+    
+    <div style="border: 1px solid #b3d9ff; border-radius: 4px; padding: 15px; margin-bottom: 20px;">
+        <h4>About Data Processing</h4>
+        <p>This section allows you to manually trigger data processing operations. These operations normally run automatically on a schedule, but you can trigger them manually here if needed.</p>
+        <p><strong>Warning:</strong> Manual processing may take some time depending on the amount of data to process.</p>
+    </div>
+    
+    <div class="data-management-actions">
+        <div class="action-card" style="border: 1px solid #dee2e6; border-radius: 4px; padding: 15px; margin-bottom: 15px;">
+            <h4>Process Visits and Trips</h4>
+            <p>Manually trigger the processing of raw location data into visits and trips. This will analyze unprocessed location points and create meaningful visits and trips from them.</p>
+            <button class="btn" 
+                    hx-post="/settings/manage-data/process-visits-trips" 
+                    hx-target="#manage-data" 
+                    hx-swap="innerHTML"
+                    hx-confirm="Are you sure you want to start processing? This may take some time.">
+                Start Processing
+            </button>
         </div>
     </div>
 </div>

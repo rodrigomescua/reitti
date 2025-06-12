@@ -131,8 +131,9 @@ public class TimelineViewController {
             if (trip.getTransportModeInferred() != null) {
                 tripEntry.put("transportMode", trip.getTransportModeInferred().toLowerCase());
             }
-            
-            if (trip.getEstimatedDistanceMeters() != null) {
+            if (trip.getTravelledDistanceMeters() != null) {
+                tripEntry.put("distanceMeters", trip.getTravelledDistanceMeters());
+            } else if (trip.getEstimatedDistanceMeters() != null) {
                 tripEntry.put("distanceMeters", trip.getEstimatedDistanceMeters());
             }
             

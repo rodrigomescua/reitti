@@ -1,6 +1,8 @@
 package com.dedicatedcode.reitti.model;
 
-import com.dedicatedcode.reitti.service.processing.StayPoint;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 
 public final class GeoUtils {
     private GeoUtils() {
@@ -50,5 +52,24 @@ public final class GeoUtils {
         double longitudeDegrees = meters / (111320.0 * Math.cos(Math.toRadians(latitude)));
         
         return new double[] { latitudeDegrees, longitudeDegrees };
+    }
+
+    public static double calculateTripDistance(List<RawLocationPoint> points) {
+        if (points.size() < 2) {
+            return 0.0;
+        }
+        List<RawLocationPoint> tmp = new ArrayList<>(points);
+        tmp.sort(Comparator.comparing(RawLocationPoint::getTimestamp));
+
+        double totalDistance = 0.0;
+
+        for (int i = 0; i < tmp.size() - 1; i++) {
+            RawLocationPoint p1 = tmp.get(i);
+            RawLocationPoint p2 = tmp.get(i + 1);
+
+            totalDistance += distanceInMeters(p1, p2);
+        }
+
+        return totalDistance;
     }
 }

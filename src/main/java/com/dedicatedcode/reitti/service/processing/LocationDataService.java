@@ -1,14 +1,15 @@
-package com.dedicatedcode.reitti.service;
+package com.dedicatedcode.reitti.service.processing;
 
 import com.dedicatedcode.reitti.dto.LocationDataRequest;
 import com.dedicatedcode.reitti.model.RawLocationPoint;
 import com.dedicatedcode.reitti.model.User;
 import com.dedicatedcode.reitti.repository.RawLocationPointRepository;
+import org.locationtech.jts.geom.Coordinate;
+import org.locationtech.jts.geom.GeometryFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.ZonedDateTime;
@@ -21,13 +22,14 @@ public class LocationDataService {
     private static final Logger logger = LoggerFactory.getLogger(LocationDataService.class);
 
     private final RawLocationPointRepository rawLocationPointRepository;
-
+    private final GeometryFactory geometryFactory;
     @Autowired
-    public LocationDataService(RawLocationPointRepository rawLocationPointRepository) {
+    public LocationDataService(RawLocationPointRepository rawLocationPointRepository,
+                               GeometryFactory geometryFactory) {
         this.rawLocationPointRepository = rawLocationPointRepository;
+        this.geometryFactory = geometryFactory;
     }
 
-    @Transactional
     public List<RawLocationPoint> processLocationData(User user, List<LocationDataRequest.LocationPoint> points) {
         List<RawLocationPoint> savedPoints = new ArrayList<>();
         int duplicatesSkipped = 0;
@@ -46,13 +48,12 @@ public class LocationDataService {
         }
 
         if (duplicatesSkipped > 0) {
-            logger.info("Skipped {} duplicate points for user {}", duplicatesSkipped, user.getUsername());
+            logger.debug("Skipped {} duplicate points for user {}", duplicatesSkipped, user.getUsername());
         }
 
         return savedPoints;
     }
 
-    @Transactional
     public Optional<RawLocationPoint> processSingleLocationPoint(User user, LocationDataRequest.LocationPoint point) {
         ZonedDateTime parse = ZonedDateTime.parse(point.getTimestamp());
         Instant timestamp = parse.toInstant();
@@ -67,8 +68,7 @@ public class LocationDataService {
 
         RawLocationPoint locationPoint = new RawLocationPoint();
         locationPoint.setUser(user);
-        locationPoint.setLatitude(point.getLatitude());
-        locationPoint.setLongitude(point.getLongitude());
+        locationPoint.setGeom(geometryFactory.createPoint(new Coordinate(point.getLongitude(), point.getLatitude())));
         locationPoint.setTimestamp(timestamp);
         locationPoint.setAccuracyMeters(point.getAccuracyMeters());
         locationPoint.setActivityProvided(point.getActivity());

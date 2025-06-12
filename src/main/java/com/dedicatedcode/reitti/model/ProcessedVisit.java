@@ -1,7 +1,6 @@
 package com.dedicatedcode.reitti.model;
 
 import jakarta.persistence.*;
-import org.locationtech.jts.geom.Point;
 
 import java.time.Instant;
 
@@ -17,7 +16,7 @@ public class ProcessedVisit {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
     
-    @ManyToOne(fetch = FetchType.LAZY)
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "place_id", nullable = false)
     private SignificantPlace place;
     

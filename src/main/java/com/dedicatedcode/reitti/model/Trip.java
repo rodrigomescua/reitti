@@ -43,9 +43,17 @@ public class Trip {
     @Column
     private String transportModeInferred;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "start_visit_id")
+    private ProcessedVisit startVisit;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "end_visit_id")
+    private ProcessedVisit endVisit;
+
     public Trip() {}
 
-    public Trip(User user, SignificantPlace startPlace, SignificantPlace endPlace, Instant startTime, Instant endTime, Double estimatedDistanceMeters, String transportModeInferred) {
+    public Trip(User user, SignificantPlace startPlace, SignificantPlace endPlace, Instant startTime, Instant endTime, Double estimatedDistanceMeters, String transportModeInferred, ProcessedVisit startVisit, ProcessedVisit endVisit) {
         this.user = user;
         this.startPlace = startPlace;
         this.endPlace = endPlace;
@@ -53,6 +61,8 @@ public class Trip {
         this.endTime = endTime;
         this.estimatedDistanceMeters = estimatedDistanceMeters;
         this.transportModeInferred = transportModeInferred;
+        this.startVisit = startVisit;
+        this.endVisit = endVisit;
     }
 
     public Long getId() {
@@ -133,6 +143,22 @@ public class Trip {
 
     public void setTransportModeInferred(String transportModeInferred) {
         this.transportModeInferred = transportModeInferred;
+    }
+
+    public ProcessedVisit getStartVisit() {
+        return startVisit;
+    }
+
+    public void setStartVisit(ProcessedVisit startVisit) {
+        this.startVisit = startVisit;
+    }
+
+    public ProcessedVisit getEndVisit() {
+        return endVisit;
+    }
+
+    public void setEndVisit(ProcessedVisit endVisit) {
+        this.endVisit = endVisit;
     }
 
     @PrePersist
