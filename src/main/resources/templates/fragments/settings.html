@@ -544,5 +544,24 @@
     </table>
 </div>
 
+<!-- About Content Fragment -->
+<div th:fragment="about-content">
+    <h2 th:text="#{about.title}">About Application</h2>
+    <div class="about-info" style="padding: 15px; border: 1px solid #dee2e6; border-radius: 4px;">
+        <p style="margin-bottom: 10px;">
+            <strong th:text="#{about.app.version}">Application Version:</strong>
+            <span th:text="${buildVersion}">N/A</span>
+        </p>
+        <p style="margin-bottom: 10px;">
+            <strong th:text="#{about.git.commit.details}">Commit Details:</strong>
+            <span th:text="${gitCommitDetails}">N/A</span>
+        </p>
+        <p style="margin-bottom: 0;">
+            <strong th:text="#{about.build.time}">Build Time:</strong>
+            <span th:text="${buildTime}">N/A</span>
+        </p>
+    </div>
+</div>
+
 </body>
 </html>

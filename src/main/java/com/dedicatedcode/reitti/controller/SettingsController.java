@@ -10,6 +10,8 @@ import com.dedicatedcode.reitti.service.*;
 import com.dedicatedcode.reitti.service.processing.RawLocationPointProcessingTrigger;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
@@ -18,17 +20,16 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.LocaleResolver;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Locale;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
+
 
 @Controller
 @RequestMapping("/settings")
@@ -45,6 +46,8 @@ public class SettingsController {
     private final boolean dataManagementEnabled;
     private final MessageSource messageSource;
     private final LocaleResolver localeResolver;
+    private final Properties gitProperties = new Properties();
+    private static final Logger logger = LoggerFactory.getLogger(SettingsController.class);
 
     public SettingsController(ApiTokenService apiTokenService,
                               UserService userService,
@@ -68,6 +71,20 @@ public class SettingsController {
         this.dataManagementEnabled = dataManagementEnabled;
         this.messageSource = messageSource;
         this.localeResolver = localeResolver;
+        loadGitProperties();
+    }
+
+    private void loadGitProperties() {
+        try (InputStream is = getClass().getClassLoader().getResourceAsStream("git.properties")) {
+            if (is != null) {
+                this.gitProperties.load(is);
+                logger.info("git.properties loaded successfully.");
+            } else {
+                logger.warn("git.properties not found on classpath. About section may not display Git information.");
+            }
+        } catch (IOException e) {
+            logger.error("Failed to load git.properties", e);
+        }
     }
 
     private String getMessage(String key, Object... args) {
@@ -560,5 +577,34 @@ public class SettingsController {
         model.addAttribute("geocodeServices", geocodeServiceRepository.findAllByOrderByNameAsc());
         model.addAttribute("maxErrors", maxErrors);
         return "fragments/settings :: geocode-services-content";
+    }
+
+    @GetMapping("/about-content")
+    public String getAboutContent(Model model) {
+        String notAvailable = getMessage("about.not.available");
+        String property = gitProperties.getProperty("git.tags");
+        if (!StringUtils.hasText(property)) {
+            property = "development";
+        }
+        model.addAttribute("buildVersion", property);
+
+        String commitId = gitProperties.getProperty("git.commit.id.abbrev", notAvailable);
+        String commitTime = gitProperties.getProperty("git.commit.time");
+
+        StringBuilder commitDetails = new StringBuilder();
+        if (!commitId.equals(notAvailable)) {
+            commitDetails.append(commitId);
+            if (commitTime != null && !commitTime.isEmpty()) {
+                commitDetails.append(" (").append(commitTime);
+                commitDetails.append(")");
+            }
+        } else {
+            commitDetails.append(notAvailable);
+        }
+
+
+        model.addAttribute("gitCommitDetails", commitDetails.toString());
+        model.addAttribute("buildTime", gitProperties.getProperty("git.build.time", notAvailable));
+        return "fragments/settings :: about-content";
     }
 }
