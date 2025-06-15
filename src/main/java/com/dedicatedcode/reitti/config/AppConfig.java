@@ -11,4 +11,5 @@ public class AppConfig {
     public GeometryFactory geometryFactory() {
         return new GeometryFactory(new PrecisionModel(), 4326);
     }
+    
 }

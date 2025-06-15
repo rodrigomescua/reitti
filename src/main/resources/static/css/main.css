@@ -153,7 +153,7 @@ label {
     font-weight: 500;
 }
 
-input[type="text"], input[type="password"] {
+input[type="text"], input[type="password"], input[type="url"] {
     width: 100%;
     padding: 8px;
     border: 1px solid #ddd;
@@ -527,22 +527,56 @@ button:hover {
         grid-template-columns: 1fr;
         gap: 10px;
     }
-    
+
     .language-btn {
         padding: 12px 16px;
         min-height: 50px;
     }
-    
+
     .language-flag {
         font-size: 1.3rem;
         margin-right: 10px;
     }
-    
+
     .language-name {
         font-size: 1rem;
     }
 }
 
+/* Collapsible details styling */
+details {
+    color: var(--color-text-white);
+}
+
+details summary {
+    padding: 15px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 1.1em;
+    background-color: var(--color-background-dark);
+    color: var(--color-text-white);
+    transition: background-color 0.2s ease;
+    border: 1px solid;
+}
+
+details > div {
+    border-bottom: 1px solid;
+    border-left: 1px solid;
+    border-right: 1px solid;
+}
+
+details:first-child > summary {
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+}
+
+details:not([open]):last-child > summary {
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+details summary:hover {
+    background-color: var(--color-background-dark-light);
+}
 
 input[type=file]::file-selector-button {
     background-color: var(--color-background-dark);
@@ -594,9 +628,9 @@ input[type=file]::file-selector-button:hover {
     width: 100%;
     height: 100%;
     background: linear-gradient(to bottom,
-        rgba(245, 222, 179, 0.3) 0%,
-        rgba(245, 222, 179, 0.6) 50%,
-        rgba(245, 222, 179, 0.3) 100%);
+    rgba(245, 222, 179, 0.3) 0%,
+    rgba(245, 222, 179, 0.6) 50%,
+    rgba(245, 222, 179, 0.3) 100%);
     border-radius: 3px;
     box-shadow: 0 0 4px rgba(0, 0, 0, 0.3);
 }
@@ -611,6 +645,10 @@ input[type=file]::file-selector-button:hover {
     background: var(--color-highlight);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
     transition: transform 0.3s ease-in-out;
+}
+
+.leaflet-container .photo-marker-icon img {
+    width: 100%;
 }
 
 @media (max-width: 800px) {
@@ -641,13 +679,13 @@ input[type=file]::file-selector-button:hover {
         width: 4px;
         height: 50vh;
     }
-    
+
     .scroll-thumb {
         width: 8px;
         height: 16px;
         border-radius: 4px;
     }
-    
+
     .scroll-thumb::before {
         width: 4px;
         height: 4px;

@@ -1,0 +1,191 @@
+:root {
+    --photo-marker-size: 50px;
+    --photo-grid-thumbnail-size: 450px;
+    --photo-count-indicator-size: 20px;
+    --photo-modal-close-button-size: 30px;
+}
+
+.photo-marker {
+    /* Custom marker styles are handled inline due to Leaflet requirements */
+}
+
+.photo-grid-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10000;
+    cursor: pointer;
+}
+
+.photo-grid-container {
+    max-width: 90%;
+    max-height: 90%;
+    cursor: default;
+    position: relative;
+    overflow: auto;
+
+}
+
+.photo-grid {
+    display: grid;
+    gap: 8px;
+    background: #333;
+    padding: 16px;
+    border-radius: 12px;
+    border: 2px solid #555;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.photo-grid-item {
+    width: var(--photo-grid-thumbnail-size);
+    height: var(--photo-grid-thumbnail-size);
+    cursor: pointer;
+    overflow: hidden;
+}
+
+.photo-grid-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.2s;
+}
+
+.photo-grid-item:hover img {
+    transform: scale(1.05);
+}
+
+.photo-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10001;
+    cursor: pointer;
+}
+
+.photo-modal-container {
+    max-width: 90%;
+    max-height: 90%;
+    position: relative;
+}
+
+.photo-nav-button {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(53, 53, 53, 0.8);
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+    color: white;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10002;
+    transition: background-color 0.2s;
+}
+
+.photo-nav-button:hover {
+    background: rgba(53, 53, 53, 1);
+}
+
+.photo-nav-button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.photo-nav-prev {
+    left: -60px;
+}
+
+.photo-nav-next {
+    right: -60px;
+}
+
+.photo-counter {
+    position: absolute;
+    bottom: -40px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(53, 53, 53, 0.8);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+.photo-modal img {
+    max-width: 100%;
+    max-height: 100vh;
+    object-fit: cover;
+}
+
+.photo-grid-close-button,
+.photo-modal-close-button {
+    position: absolute;
+    top: -40px;
+    right: 0;
+    background: rgba(53, 53, 53, 0.8);
+    border: none;
+    border-radius: 50%;
+    width: var(--photo-modal-close-button-size);
+    height: var(--photo-modal-close-button-size);
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.photo-marker-icon {
+    border-radius: 50%;
+    border: 3px solid #fff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    background: #f0f0f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+}
+
+.photo-marker-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    border-radius: 50%;
+    overflow: hidden;
+}
+
+.photo-count-indicator {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #e74c3c;
+    color: white;
+    border-radius: 50%;
+    width: var(--photo-count-indicator-size);
+    height: var(--photo-count-indicator-size);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: bold;
+    border: 2px solid #fff;
+    z-index: 20;
+}
