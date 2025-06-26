@@ -1,173 +1,78 @@
 package com.dedicatedcode.reitti.model;
 
-import jakarta.persistence.*;
-
-import java.time.Duration;
 import java.time.Instant;
 
-@Entity
-@Table(name = "trips")
 public class Trip {
     
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "start_place_id")
-    private SignificantPlace startPlace;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "end_place_id")
-    private SignificantPlace endPlace;
-    
-    @Column(nullable = false)
-    private Instant startTime;
-    
-    @Column(nullable = false)
-    private Instant endTime;
-    
-    @Column(nullable = false)
-    private Long durationSeconds;
-    
-    @Column
-    private Double estimatedDistanceMeters;
-    
-    @Column(name = "travelled_distance_meters")
-    private Double travelledDistanceMeters;
-    
-    @Column
-    private String transportModeInferred;
+    private final Long id;
+    private final Instant startTime;
+    private final Instant endTime;
+    private final Long durationSeconds;
+    private final Double estimatedDistanceMeters;
+    private final Double travelledDistanceMeters;
+    private final String transportModeInferred;
+    private final ProcessedVisit startVisit;
+    private final ProcessedVisit endVisit;
+    private final Long version;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "start_visit_id")
-    private ProcessedVisit startVisit;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "end_visit_id")
-    private ProcessedVisit endVisit;
-
-    public Trip() {}
-
-    public Trip(User user, SignificantPlace startPlace, SignificantPlace endPlace, Instant startTime, Instant endTime, Double estimatedDistanceMeters, String transportModeInferred, ProcessedVisit startVisit, ProcessedVisit endVisit) {
-        this.user = user;
-        this.startPlace = startPlace;
-        this.endPlace = endPlace;
+    public Trip(Instant startTime, Instant endTime, Long durationSeconds, Double estimatedDistanceMeters, Double travelledDistanceMeters, String transportModeInferred, ProcessedVisit startVisit, ProcessedVisit endVisit) {
+        this(null, startTime, endTime, durationSeconds, estimatedDistanceMeters, travelledDistanceMeters, transportModeInferred, startVisit, endVisit, 1L);
+    }
+    
+    public Trip(Long id, Instant startTime, Instant endTime, Long durationSeconds, Double estimatedDistanceMeters, Double travelledDistanceMeters, String transportModeInferred, ProcessedVisit startVisit, ProcessedVisit endVisit, Long version) {
+        this.id = id;
         this.startTime = startTime;
         this.endTime = endTime;
+        this.durationSeconds = durationSeconds;
         this.estimatedDistanceMeters = estimatedDistanceMeters;
+        this.travelledDistanceMeters = travelledDistanceMeters;
         this.transportModeInferred = transportModeInferred;
         this.startVisit = startVisit;
         this.endVisit = endVisit;
+        this.version = version;
     }
 
     public Long getId() {
         return id;
     }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
-    public SignificantPlace getStartPlace() {
-        return startPlace;
-    }
-
-    public void setStartPlace(SignificantPlace startPlace) {
-        this.startPlace = startPlace;
-    }
-
-    public SignificantPlace getEndPlace() {
-        return endPlace;
-    }
-
-    public void setEndPlace(SignificantPlace endPlace) {
-        this.endPlace = endPlace;
-    }
-
     public Instant getStartTime() {
         return startTime;
-    }
-
-    public void setStartTime(Instant startTime) {
-        this.startTime = startTime;
     }
 
     public Instant getEndTime() {
         return endTime;
     }
 
-    public void setEndTime(Instant endTime) {
-        this.endTime = endTime;
-    }
-
     public Long getDurationSeconds() {
         return durationSeconds;
     }
 
-    public void setDurationSeconds(Long durationSeconds) {
-        this.durationSeconds = durationSeconds;
-    }
-
     public Double getEstimatedDistanceMeters() {
         return estimatedDistanceMeters;
-    }
-
-    public void setEstimatedDistanceMeters(Double estimatedDistanceMeters) {
-        this.estimatedDistanceMeters = estimatedDistanceMeters;
     }
     
     public Double getTravelledDistanceMeters() {
         return travelledDistanceMeters;
     }
 
-    public void setTravelledDistanceMeters(Double travelledDistanceMeters) {
-        this.travelledDistanceMeters = travelledDistanceMeters;
-    }
-
     public String getTransportModeInferred() {
         return transportModeInferred;
-    }
-
-    public void setTransportModeInferred(String transportModeInferred) {
-        this.transportModeInferred = transportModeInferred;
     }
 
     public ProcessedVisit getStartVisit() {
         return startVisit;
     }
 
-    public void setStartVisit(ProcessedVisit startVisit) {
-        this.startVisit = startVisit;
-    }
-
     public ProcessedVisit getEndVisit() {
         return endVisit;
     }
 
-    public void setEndVisit(ProcessedVisit endVisit) {
-        this.endVisit = endVisit;
+    public Long getVersion() {
+        return version;
     }
 
-    @PrePersist
-    @PreUpdate
-    private void calculateDuration() {
-        if (startTime != null && endTime != null) {
-            durationSeconds = Duration.between(startTime, endTime).getSeconds();
-        }
+    public Trip withId(Long id) {
+        return new Trip(id, this.startTime, this.endTime, this.durationSeconds, this.estimatedDistanceMeters, this.travelledDistanceMeters, this.transportModeInferred, this.startVisit, this.endVisit, this.version);
     }
-
-
 }

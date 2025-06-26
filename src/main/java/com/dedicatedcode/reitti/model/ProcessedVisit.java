@@ -1,135 +1,77 @@
 package com.dedicatedcode.reitti.model;
 
-import jakarta.persistence.*;
-
 import java.time.Instant;
+import java.util.List;
 
-@Entity
-@Table(name = "processed_visits")
 public class ProcessedVisit {
-    
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-    
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "place_id", nullable = false)
-    private SignificantPlace place;
-    
-    @Column(name = "start_time", nullable = false)
-    private Instant startTime;
-    
-    @Column(name = "end_time", nullable = false)
-    private Instant endTime;
-    
-    @Column(name = "duration_seconds", nullable = false)
-    private Long durationSeconds;
-    
-    @Column(name = "original_visit_ids")
-    private String originalVisitIds; // Comma-separated list of original visit IDs
-    
-    @Column(name = "merged_count")
-    private Integer mergedCount;
-    
-    @PrePersist
-    @PreUpdate
-    private void calculateDuration() {
-        if (startTime != null && endTime != null) {
-            durationSeconds = endTime.getEpochSecond() - startTime.getEpochSecond();
-        }
+
+    private final Long id;
+    private final SignificantPlace place;
+    private final Instant startTime;
+    private final Instant endTime;
+    private final Long durationSeconds;
+    private final Long version;
+    private final List<Long> mergedTripIds;
+
+    public ProcessedVisit(SignificantPlace place, Instant startTime, Instant endTime, Long durationSeconds, List<Long> mergedTripIds) {
+        this(null, place, startTime, endTime, durationSeconds, 1L, mergedTripIds);
     }
-    
-    // Constructors
-    public ProcessedVisit() {
-        this.mergedCount = 1;
-    }
-    
-    public ProcessedVisit(User user, SignificantPlace place, Instant startTime, Instant endTime) {
-        this.user = user;
+
+    public ProcessedVisit(Long id, SignificantPlace place, Instant startTime, Instant endTime, Long durationSeconds, Long version, List<Long> mergedTripIds) {
+        this.id = id;
         this.place = place;
         this.startTime = startTime;
         this.endTime = endTime;
-        this.mergedCount = 1;
+        this.durationSeconds = durationSeconds;
+        this.version = version;
+        this.mergedTripIds = mergedTripIds;
     }
-    
-    // Getters and Setters
+
     public Long getId() {
         return id;
     }
-    
-    public void setId(Long id) {
-        this.id = id;
-    }
-    
-    public User getUser() {
-        return user;
-    }
-    
-    public void setUser(User user) {
-        this.user = user;
-    }
-    
+
     public SignificantPlace getPlace() {
         return place;
     }
-    
-    public void setPlace(SignificantPlace place) {
-        this.place = place;
-    }
-    
+
     public Instant getStartTime() {
         return startTime;
     }
-    
-    public void setStartTime(Instant startTime) {
-        this.startTime = startTime;
-    }
-    
+
     public Instant getEndTime() {
         return endTime;
     }
-    
-    public void setEndTime(Instant endTime) {
-        this.endTime = endTime;
-    }
-    
+
     public Long getDurationSeconds() {
         return durationSeconds;
     }
-    
-    public void setDurationSeconds(Long durationSeconds) {
-        this.durationSeconds = durationSeconds;
+
+    public Long getVersion() {
+        return this.version;
     }
-    
-    public String getOriginalVisitIds() {
-        return originalVisitIds;
+
+    public List<Long> getMergedTripIds() {
+        return mergedTripIds;
     }
-    
-    public void setOriginalVisitIds(String originalVisitIds) {
-        this.originalVisitIds = originalVisitIds;
+
+    public ProcessedVisit withId(Long id) {
+        return new ProcessedVisit(id, this.place, this.startTime, this.endTime, this.durationSeconds, this.version, this.mergedTripIds);
     }
-    
-    public Integer getMergedCount() {
-        return mergedCount;
+
+    public ProcessedVisit withVersion(long version) {
+        return new ProcessedVisit(this.id, this.place, this.startTime, this.endTime, this.durationSeconds, version, this.mergedTripIds);
     }
-    
-    public void setMergedCount(Integer mergedCount) {
-        this.mergedCount = mergedCount;
-    }
-    
-    public void incrementMergedCount() {
-        this.mergedCount++;
-    }
-    
-    public void addOriginalVisitId(Long visitId) {
-        if (this.originalVisitIds == null || this.originalVisitIds.isEmpty()) {
-            this.originalVisitIds = visitId.toString();
-        } else {
-            this.originalVisitIds += "," + visitId;
-        }
+
+    @Override
+    public String toString() {
+        return "ProcessedVisit{" +
+                "id=" + id +
+                ", place=" + place +
+                ", startTime=" + startTime +
+                ", endTime=" + endTime +
+                ", durationSeconds=" + durationSeconds +
+                ", version=" + version +
+                '}';
     }
 }

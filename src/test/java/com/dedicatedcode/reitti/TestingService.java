@@ -2,12 +2,8 @@ package com.dedicatedcode.reitti;
 
 import com.dedicatedcode.reitti.config.RabbitMQConfig;
 import com.dedicatedcode.reitti.model.User;
-import com.dedicatedcode.reitti.repository.ProcessedVisitRepository;
-import com.dedicatedcode.reitti.repository.RawLocationPointRepository;
-import com.dedicatedcode.reitti.repository.TripRepository;
-import com.dedicatedcode.reitti.repository.VisitRepository;
+import com.dedicatedcode.reitti.repository.*;
 import com.dedicatedcode.reitti.service.ImportHandler;
-import com.dedicatedcode.reitti.service.UserService;
 import com.dedicatedcode.reitti.service.processing.RawLocationPointProcessingTrigger;
 import org.awaitility.Awaitility;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
@@ -33,25 +29,24 @@ public class TestingService {
     private final AtomicLong lastRun = new AtomicLong(0);
 
     @Autowired
-    private UserService userService;
+    private UserJdbcService userJdbcService;
     @Autowired
     private ImportHandler importHandler;
-   @Autowired
-    private RawLocationPointRepository rawLocationPointRepository;
+    @Autowired
+    private RawLocationPointJdbcService rawLocationPointRepository;
     @Autowired
     private RabbitAdmin rabbitAdmin;
-
     @Autowired
-    private TripRepository tripRepository;
+    private TripJdbcService tripRepository;
     @Autowired
-    private ProcessedVisitRepository processedVisitRepository;
+    private ProcessedVisitJdbcService processedVisitRepository;
     @Autowired
-    private VisitRepository visitRepository;
+    private VisitJdbcService visitRepository;
     @Autowired
     private RawLocationPointProcessingTrigger trigger;
 
     public void importData(String path) {
-        User admin = userService.getUserById(1L);
+        User admin = userJdbcService.getUserById(1L);
         InputStream is = getClass().getResourceAsStream(path);
         if (path.endsWith(".gpx")) {
             importHandler.importGpx(is, admin);
@@ -62,23 +57,32 @@ public class TestingService {
         }
     }
 
+    public User admin() {
+        return this.userJdbcService.getUserById(1L);
+    }
     public void triggerProcessingPipeline() {
         trigger.start();
     }
+
+    public void triggerProcessingPipeline(int timeoout) {
+        trigger.start();
+        awaitDataImport(timeoout);
+    }
+
     public void awaitDataImport(int seconds) {
         this.lastRun.set(0);
         Awaitility.await()
-                .pollInterval(10, TimeUnit.SECONDS)
+                .pollInterval(seconds / 10, TimeUnit.SECONDS)
                 .atMost(seconds, TimeUnit.SECONDS)
                 .alias("Wait for Queues to be empty").until(() -> {
                     boolean queuesArEmpty = QUEUES_TO_CHECK.stream().allMatch(name -> this.rabbitAdmin.getQueueInfo(name).getMessageCount() == 0);
-                    if (!queuesArEmpty){
+                    if (!queuesArEmpty) {
                         return false;
                     }
 
                     long currentCount = rawLocationPointRepository.count();
                     return currentCount == lastRun.getAndSet(currentCount);
-        });
+                });
     }
 
     public void clearData() {
@@ -96,5 +100,11 @@ public class TestingService {
         this.processedVisitRepository.deleteAll();
         this.visitRepository.deleteAll();
         this.rawLocationPointRepository.deleteAll();
+    }
+
+    public void importAndProcess(String path) {
+        importData(path);
+        awaitDataImport(10);
+        triggerProcessingPipeline(20);
     }
 }

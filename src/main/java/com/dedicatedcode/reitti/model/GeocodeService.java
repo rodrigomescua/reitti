@@ -1,62 +1,64 @@
 package com.dedicatedcode.reitti.model;
 
-import jakarta.persistence.*;
 import java.time.Instant;
 
-@Entity
-@Table(name = "geocode_services")
 public class GeocodeService {
     
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private final Long id;
+    private final String name;
+    private final String urlTemplate;
+    private final boolean enabled;
+    private final int errorCount;
+    private final Instant lastUsed;
+    private final Instant lastError;
+    private final Long version;
     
-    @Column(nullable = false)
-    private String name;
-    
-    @Column(nullable = false, length = 1000)
-    private String urlTemplate;
-    
-    @Column(nullable = false)
-    private boolean enabled = true;
-    
-    @Column(nullable = false)
-    private int errorCount = 0;
-    
-    @Column
-    private Instant lastUsed;
-    
-    @Column
-    private Instant lastError;
-    
-    
-    public GeocodeService() {}
-    
-    public GeocodeService(String name, String urlTemplate) {
+    public GeocodeService(String name, String urlTemplate, boolean enabled, int errorCount, Instant lastUsed, Instant lastError) {
+        this(null, name, urlTemplate, enabled, errorCount, lastUsed, lastError, 1L);
+    }
+    public GeocodeService(Long id, String name, String urlTemplate, boolean enabled, int errorCount, Instant lastUsed, Instant lastError, Long version) {
+        this.id = id;
         this.name = name;
         this.urlTemplate = urlTemplate;
+        this.enabled = enabled;
+        this.errorCount = errorCount;
+        this.lastUsed = lastUsed;
+        this.lastError = lastError;
+        this.version = version;
     }
     
-    // Getters and setters
+    // Getters
     public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    
     public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    
     public String getUrlTemplate() { return urlTemplate; }
-    public void setUrlTemplate(String urlTemplate) { this.urlTemplate = urlTemplate; }
-    
     public boolean isEnabled() { return enabled; }
-    public void setEnabled(boolean enabled) { this.enabled = enabled; }
-    
     public int getErrorCount() { return errorCount; }
-    public void setErrorCount(int errorCount) { this.errorCount = errorCount; }
-    
     public Instant getLastUsed() { return lastUsed; }
-    public void setLastUsed(Instant lastUsed) { this.lastUsed = lastUsed; }
-    
     public Instant getLastError() { return lastError; }
-    public void setLastError(Instant lastError) { this.lastError = lastError; }
+    public Long getVersion() { return version; }
     
+    // Wither methods
+    public GeocodeService withEnabled(boolean enabled) {
+        return new GeocodeService(this.id, this.name, this.urlTemplate, enabled, this.errorCount, this.lastUsed, this.lastError, this.version);
+    }
+
+    public GeocodeService withIncrementedErrorCount() {
+        return new GeocodeService(this.id, this.name, this.urlTemplate, this.enabled, this.errorCount + 1, this.lastUsed, Instant.now(), this.version);
+    }
+
+    public GeocodeService withLastUsed(Instant lastUsed) {
+        return new GeocodeService(this.id, this.name, this.urlTemplate, this.enabled, this.errorCount, lastUsed, this.lastError, this.version);
+    }
+
+    public  GeocodeService withLastError(Instant lastError) {
+        return new GeocodeService(this.id, this.name, this.urlTemplate, this.enabled, this.errorCount, this.lastUsed, lastError, this.version);
+    }
+
+    public GeocodeService withId(Long id) {
+        return new GeocodeService(id, this.name, this.urlTemplate, this.enabled, this.errorCount, this.lastUsed, lastError, this.version);
+    }
+
+    public GeocodeService resetErrorCount() {
+        return new GeocodeService(id, name, urlTemplate, this.enabled, 0, this.lastUsed, null, this.version);
+    }
 }

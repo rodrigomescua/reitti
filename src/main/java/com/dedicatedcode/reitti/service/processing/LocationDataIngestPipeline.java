@@ -1,13 +1,12 @@
 package com.dedicatedcode.reitti.service.processing;
 
-import com.dedicatedcode.reitti.config.RabbitMQConfig;
+import com.dedicatedcode.reitti.dto.LocationDataRequest;
 import com.dedicatedcode.reitti.event.LocationDataEvent;
-import com.dedicatedcode.reitti.model.RawLocationPoint;
 import com.dedicatedcode.reitti.model.User;
-import com.dedicatedcode.reitti.repository.UserRepository;
+import com.dedicatedcode.reitti.repository.RawLocationPointJdbcService;
+import com.dedicatedcode.reitti.repository.UserJdbcService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -18,23 +17,20 @@ import java.util.Optional;
 public class LocationDataIngestPipeline {
     private static final Logger logger = LoggerFactory.getLogger(LocationDataIngestPipeline.class);
 
-    private final UserRepository userRepository;
-    private final LocationDataService locationDataService;
+    private final UserJdbcService userJdbcService;
+    private final RawLocationPointJdbcService rawLocationPointJdbcService;
 
     @Autowired
-    public LocationDataIngestPipeline(
-            UserRepository userRepository,
-            LocationDataService locationDataService) {
-        this.userRepository = userRepository;
-        this.locationDataService = locationDataService;
+    public LocationDataIngestPipeline(UserJdbcService userJdbcService,
+                                      RawLocationPointJdbcService rawLocationPointJdbcService) {
+        this.userJdbcService = userJdbcService;
+        this.rawLocationPointJdbcService = rawLocationPointJdbcService;
     }
 
-    @RabbitListener(queues = RabbitMQConfig.LOCATION_DATA_QUEUE, concurrency = "4-16")
     public void processLocationData(LocationDataEvent event) {
-        logger.debug("Starting processing pipeline for user {} with {} points",
-                event.getUsername(), event.getPoints().size());
+        long start = System.currentTimeMillis();
 
-        Optional<User> userOpt = userRepository.findByUsername(event.getUsername());
+        Optional<User> userOpt = userJdbcService.findByUsername(event.getUsername());
 
         if (userOpt.isEmpty()) {
             logger.warn("User not found for name: {}", event.getUsername());
@@ -42,14 +38,9 @@ public class LocationDataIngestPipeline {
         }
 
         User user = userOpt.get();
-
-        List<RawLocationPoint> savedPoints = locationDataService.processLocationData(user, event.getPoints());
-
-        if (savedPoints.isEmpty()) {
-            logger.debug("No new points to process for user {}", user.getUsername());
-        } else {
-            logger.info("Saved {} new location points for user {}", savedPoints.size(), user.getUsername());
-        }
+        List<LocationDataRequest.LocationPoint> points = event.getPoints();
+        rawLocationPointJdbcService.bulkInsert(user, points);
+        logger.info("Finished storing points for user [{}] in [{}]ms", event.getUsername(), System.currentTimeMillis() - start);
     }
 
 }

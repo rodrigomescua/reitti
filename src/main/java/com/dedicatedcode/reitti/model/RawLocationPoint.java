@@ -1,69 +1,54 @@
 package com.dedicatedcode.reitti.model;
 
-import jakarta.persistence.*;
 import org.locationtech.jts.geom.Point;
 
 import java.time.Instant;
 import java.util.Objects;
 
-@Entity
-@Table(name = "raw_location_points")
 public class RawLocationPoint {
     
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private final Long id;
     
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    private final Instant timestamp;
     
-    @Column(nullable = false)
-    private Instant timestamp;
+    private final Double accuracyMeters;
     
-    @Column(nullable = false)
-    private Double accuracyMeters;
-    
-    @Column
-    private String activityProvided;
+    private final String activityProvided;
 
-    @Column(columnDefinition = "geometry(Point,4326)", nullable = false)
-    private Point geom;
+    private final Point geom;
 
-    @Column(nullable = false)
-    private boolean processed;
+    private final boolean processed;
+
+    private final Long version;
 
     public RawLocationPoint() {
+        this(null, null, null, null, null, false, null);
     }
-    public RawLocationPoint(User user, Instant timestamp, Point geom, Double accuracyMeters) {
-        this.user = user;
+    
+    public RawLocationPoint(Instant timestamp, Point geom, Double accuracyMeters) {
+        this(null, timestamp, geom, accuracyMeters, null, false, null);
+    }
+    
+    public RawLocationPoint(Instant timestamp, Point geom, Double accuracyMeters, String activityProvided) {
+        this(null, timestamp, geom, accuracyMeters, activityProvided, false, null);
+    }
+    
+    public RawLocationPoint(Long id, Instant timestamp, Point geom, Double accuracyMeters, String activityProvided, boolean processed, Long version) {
+        this.id = id;
         this.timestamp = timestamp;
-        this.accuracyMeters = accuracyMeters;
         this.geom = geom;
+        this.accuracyMeters = accuracyMeters;
+        this.activityProvided = activityProvided;
+        this.processed = processed;
+        this.version = version;
     }
 
     public Long getId() {
         return id;
     }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
     public Instant getTimestamp() {
         return timestamp;
-    }
-
-    public void setTimestamp(Instant timestamp) {
-        this.timestamp = timestamp;
     }
 
     public Double getLatitude() {
@@ -78,36 +63,28 @@ public class RawLocationPoint {
         return accuracyMeters;
     }
 
-    public void setAccuracyMeters(Double accuracyMeters) {
-        this.accuracyMeters = accuracyMeters;
-    }
-
     public String getActivityProvided() {
         return activityProvided;
-    }
-
-    public void setActivityProvided(String activityProvided) {
-        this.activityProvided = activityProvided;
     }
 
     public Point getGeom() {
         return geom;
     }
 
-    public void setGeom(Point geom) {
-        this.geom = geom;
-    }
-
     public boolean isProcessed() {
         return processed;
     }
 
-    public void setProcessed(boolean processed) {
-        this.processed = processed;
+    public RawLocationPoint markProcessed() {
+        return new RawLocationPoint(this.id, this.timestamp, this.geom, this.accuracyMeters, this.activityProvided, true, this.version);
     }
 
-    public void markProcessed() {
-        this.processed = true;
+    public RawLocationPoint withId(Long id) {
+        return new RawLocationPoint(id, timestamp, geom, accuracyMeters, activityProvided, processed, version);
+    }
+
+    public Long getVersion() {
+        return version;
     }
 
     @Override
@@ -121,4 +98,5 @@ public class RawLocationPoint {
     public int hashCode() {
         return Objects.hashCode(id);
     }
+
 }

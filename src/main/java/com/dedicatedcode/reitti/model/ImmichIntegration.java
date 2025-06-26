@@ -1,108 +1,81 @@
 package com.dedicatedcode.reitti.model;
 
-import jakarta.persistence.*;
 import java.time.Instant;
 
-@Entity
-@Table(name = "immich_integrations")
 public class ImmichIntegration {
     
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    private final Long id;
     
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
+    private final String serverUrl;
     
-    @Column(name = "server_url", nullable = false)
-    private String serverUrl;
+    private final String apiToken;
     
-    @Column(name = "api_token", nullable = false)
-    private String apiToken;
+    private final boolean enabled;
     
-    @Column(name = "enabled", nullable = false)
-    private boolean enabled = false;
+    private final Instant createdAt;
     
-    @Column(name = "created_at", nullable = false)
-    private Instant createdAt;
+    private final Instant updatedAt;
     
-    @Column(name = "updated_at", nullable = false)
-    private Instant updatedAt;
+    private final Long version;
     
-    public ImmichIntegration() {
-        this.createdAt = Instant.now();
-        this.updatedAt = Instant.now();
+
+    public ImmichIntegration(String serverUrl, String apiToken, boolean enabled) {
+        this(null, serverUrl, apiToken, enabled, null, null, 1L);
     }
     
-    public ImmichIntegration(User user, String serverUrl, String apiToken, boolean enabled) {
-        this();
-        this.user = user;
+    public ImmichIntegration(Long id, String serverUrl, String apiToken, boolean enabled, Instant createdAt, Instant updatedAt, Long version) {
+        this.id = id;
         this.serverUrl = serverUrl;
         this.apiToken = apiToken;
         this.enabled = enabled;
+        this.createdAt = createdAt != null ? createdAt : Instant.now();
+        this.updatedAt = updatedAt != null ? updatedAt : Instant.now();
+        this.version = version;
     }
     
-    @PreUpdate
-    private void updateTimestamp() {
-        this.updatedAt = Instant.now();
-    }
-    
-    // Getters and setters
+    // Getters
     public Long getId() {
         return id;
-    }
-    
-    public void setId(Long id) {
-        this.id = id;
-    }
-    
-    public User getUser() {
-        return user;
-    }
-    
-    public void setUser(User user) {
-        this.user = user;
     }
     
     public String getServerUrl() {
         return serverUrl;
     }
     
-    public void setServerUrl(String serverUrl) {
-        this.serverUrl = serverUrl;
-    }
-    
     public String getApiToken() {
         return apiToken;
-    }
-    
-    public void setApiToken(String apiToken) {
-        this.apiToken = apiToken;
     }
     
     public boolean isEnabled() {
         return enabled;
     }
     
-    public void setEnabled(boolean enabled) {
-        this.enabled = enabled;
-    }
-    
     public Instant getCreatedAt() {
         return createdAt;
-    }
-    
-    public void setCreatedAt(Instant createdAt) {
-        this.createdAt = createdAt;
     }
     
     public Instant getUpdatedAt() {
         return updatedAt;
     }
     
-    public void setUpdatedAt(Instant updatedAt) {
-        this.updatedAt = updatedAt;
+    public Long getVersion() {
+        return version;
     }
     
+    // Wither methods
+    public ImmichIntegration withEnabled(boolean enabled) {
+        return new ImmichIntegration(this.id, this.serverUrl, this.apiToken, enabled, this.createdAt, Instant.now(), this.version);
+    }
+
+    public ImmichIntegration withServerUrl(String serverUrl) {
+        return new ImmichIntegration(this.id, serverUrl, this.apiToken, this.enabled, this.createdAt, this.updatedAt, version);
+    }
+
+    public ImmichIntegration withApiToken(String apiToken) {
+        return new ImmichIntegration(this.id, this.serverUrl, apiToken, this.enabled, this.createdAt, Instant.now(), this.version);
+    }
+
+    public ImmichIntegration withId(Long id) {
+        return new ImmichIntegration(id, this.serverUrl, this.apiToken, this.enabled, this.createdAt, this.updatedAt, version);
+    }
 }

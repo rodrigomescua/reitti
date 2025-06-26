@@ -1,53 +1,38 @@
 package com.dedicatedcode.reitti.model;
 
-import jakarta.persistence.*;
-import org.springframework.messaging.simp.user.DefaultUserDestinationResolver;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 
-@Entity
-@Table(name = "users")
 public class User implements UserDetails {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @Column(nullable = false, unique = true)
-    private String username;
-    
-    @Column(nullable = false)
-    private String password;
-    
-    @Column(nullable = false)
-    private String displayName;
+    private final Long id;
+    private final String username;
+    private final String password;
+    private final String displayName;
+    private final Long version;
 
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<SignificantPlace> significantPlaces = new ArrayList<>();
-    
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Visit> visits = new ArrayList<>();
-    
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<Trip> trips = new ArrayList<>();
+    public User() {
+        this(null, null, null, null, null);
+    }
 
-    public User() {}
     public User(String username, String displayName) {
+        this(null, username, null, displayName, null);
+    }
+
+    public User(Long id, String username, String password, String displayName, Long version) {
+        this.id = id;
         this.username = username;
+        this.password = password;
         this.displayName = displayName;
+        this.version = version;
     }
 
     public Long getId() {
         return id;
-    }
-
-    public void setId(Long id) {
-        this.id = id;
     }
 
     public String getUsername() {
@@ -74,16 +59,8 @@ public class User implements UserDetails {
         return true;
     }
 
-    public void setUsername(String username) {
-        this.username = username;
-    }
-
     public String getDisplayName() {
         return displayName;
-    }
-
-    public void setDisplayName(String displayName) {
-        this.displayName = displayName;
     }
 
     @Override
@@ -94,35 +71,22 @@ public class User implements UserDetails {
     public String getPassword() {
         return password;
     }
-    
-    public void setPassword(String password) {
-        this.password = password;
+
+    public Long getVersion() {
+        return version;
     }
 
-    public List<SignificantPlace> getSignificantPlaces() {
-        return significantPlaces;
+    // Wither methods
+    public User withPassword(String password) {
+        return new User(this.id, this.username, password, this.displayName, this.version);
     }
 
-    public void setSignificantPlaces(List<SignificantPlace> significantPlaces) {
-        this.significantPlaces = significantPlaces;
+    public User withDisplayName(String displayName) {
+        return new User(this.id, this.username, this.password, displayName, this.version);
     }
 
-    public List<Visit> getVisits() {
-        return visits;
+    public User withVersion(Long version) {
+        return new User(this.id, this.username, this.password, this.displayName, version);
     }
-
-    public void setVisits(List<Visit> visits) {
-        this.visits = visits;
-    }
-
-    public List<Trip> getTrips() {
-        return trips;
-    }
-
-    public void setTrips(List<Trip> trips) {
-        this.trips = trips;
-    }
-
-
 
 }

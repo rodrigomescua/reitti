@@ -2,15 +2,14 @@ package com.dedicatedcode.reitti.service.processing;
 
 import com.dedicatedcode.reitti.config.RabbitMQConfig;
 import com.dedicatedcode.reitti.event.LocationProcessEvent;
-import com.dedicatedcode.reitti.event.VisitCreatedEvent;
 import com.dedicatedcode.reitti.event.VisitUpdatedEvent;
 import com.dedicatedcode.reitti.model.*;
-import com.dedicatedcode.reitti.repository.RawLocationPointRepository;
-import com.dedicatedcode.reitti.repository.VisitRepository;
-import com.dedicatedcode.reitti.service.UserService;
+import com.dedicatedcode.reitti.repository.OptimisticLockException;
+import com.dedicatedcode.reitti.repository.RawLocationPointJdbcService;
+import com.dedicatedcode.reitti.repository.UserJdbcService;
+import com.dedicatedcode.reitti.repository.VisitJdbcService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -18,117 +17,122 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 @Service
 public class VisitDetectionService {
     private static final Logger logger = LoggerFactory.getLogger(VisitDetectionService.class);
 
-    // Parameters for stay point detection
     private final double distanceThreshold; // meters
     private final long timeThreshold; // seconds
     private final int minPointsInCluster; // Minimum points to form a valid cluster
-    private final UserService userService;
-    private final RawLocationPointRepository rawLocationPointRepository;
-    private final VisitRepository visitRepository;
+    private final UserJdbcService userJdbcService;
+    private final RawLocationPointJdbcService rawLocationPointJdbcService;
+    private final VisitJdbcService visitJdbcService;
 
     private final RabbitTemplate rabbitTemplate;
+    private final ConcurrentHashMap<String, ReentrantLock> userLocks = new ConcurrentHashMap<>();
 
     @Autowired
     public VisitDetectionService(
-            RawLocationPointRepository rawLocationPointRepository,
+            RawLocationPointJdbcService rawLocationPointJdbcService,
             @Value("${reitti.staypoint.distance-threshold-meters:50}") double distanceThreshold,
             @Value("${reitti.visit.merge-threshold-seconds:300}") long timeThreshold,
             @Value("${reitti.staypoint.min-points:5}") int minPointsInCluster,
-            UserService userService,
-            VisitRepository visitRepository,
+            UserJdbcService userJdbcService,
+            VisitJdbcService visitJdbcService,
             RabbitTemplate rabbitTemplate) {
-        this.rawLocationPointRepository = rawLocationPointRepository;
+        this.rawLocationPointJdbcService = rawLocationPointJdbcService;
         this.distanceThreshold = distanceThreshold;
         this.timeThreshold = timeThreshold;
         this.minPointsInCluster = minPointsInCluster;
-        this.userService = userService;
-        this.visitRepository = visitRepository;
+        this.userJdbcService = userJdbcService;
+        this.visitJdbcService = visitJdbcService;
         this.rabbitTemplate = rabbitTemplate;
 
         logger.info("StayPointDetectionService initialized with: distanceThreshold={}m, timeThreshold={}s, minPointsInCluster={}",
                 distanceThreshold, timeThreshold, minPointsInCluster);
     }
 
-    @RabbitListener(queues = RabbitMQConfig.STAY_DETECTION_QUEUE, concurrency = "1-16")
     public void detectStayPoints(LocationProcessEvent incoming) {
-        logger.debug("Detecting stay points for user {} from {} to {} ", incoming.getUsername(), incoming.getEarliest(), incoming.getLatest());
-        User user = userService.getUserByUsername(incoming.getUsername());
-        // Get points from 1 day before the earliest new point
-        Instant windowStart = incoming.getEarliest().minus(Duration.ofDays(1));
+        String username = incoming.getUsername();
+        ReentrantLock userLock = userLocks.computeIfAbsent(username, _ -> new ReentrantLock());
+        
+        userLock.lock();
+        try {
+            logger.debug("Detecting stay points for user {} from {} to {} ", username, incoming.getEarliest(), incoming.getLatest());
+            User user = userJdbcService.getUserByUsername(username);
+        // We extend the search window slightly to catch visits spanning midnight
+        Instant windowStart = incoming.getEarliest().minus(5, ChronoUnit.MINUTES);
         // Get points from 1 day after the latest new point
-        Instant windowEnd = incoming.getLatest().plus(Duration.ofDays(1));
+        Instant windowEnd = incoming.getLatest().plus(5, ChronoUnit.MINUTES);
 
-        List<RawLocationPointRepository.ClusteredPoint> clusteredPointsInTimeRangeForUser = this.rawLocationPointRepository.findClusteredPointsInTimeRangeForUser(user, windowStart, windowEnd, minPointsInCluster, GeoUtils.metersToDegreesAtPosition(distanceThreshold, 50)[0]);
+        /*
+        -----+++++----------+++++------+++++++---+++----------------++++++++-----------------------------------------------
+        ----------------------#-------------------#------------------------------------------------------------------------
+        --------------------++#++------+++++++---+#+-----------------------------------------------------------------------
+         */
+        List<Visit> affectedVisits = this.visitJdbcService.findByUserAndTimeAfterAndStartTimeBefore(user, windowStart, windowEnd);
+        if (logger.isDebugEnabled()) {
+            logger.debug("Found [{}] visits which touch the timerange from [{}] to [{}]", affectedVisits.size(), windowStart, windowEnd);
+            affectedVisits.forEach(visit -> logger.debug("Visit [{}] from [{}] to [{}] at [{},{}]", visit.getId(), visit.getStartTime(), visit.getEndTime(), visit.getLongitude(), visit.getLatitude()));
+
+        }
+        try {
+            this.visitJdbcService.delete(affectedVisits);
+            logger.debug("Deleted [{}] visits with ids [{}]", affectedVisits.size(), affectedVisits.stream().map(Visit::getId).map(Object::toString).collect(Collectors.joining()));
+        } catch (OptimisticLockException e) {
+            logger.error("Optimistic lock exception", e);
+            throw new RuntimeException(e);
+        }
+
+        if (!affectedVisits.isEmpty()) {
+            if (affectedVisits.getFirst().getStartTime().isBefore(windowStart)) {
+                windowStart = affectedVisits.getFirst().getStartTime();
+            }
+
+            if (affectedVisits.getLast().getEndTime().isAfter(windowEnd)) {
+                windowEnd = affectedVisits.getLast().getEndTime();
+            }
+        }
+        logger.debug("Searching for points in the timerange from [{}] to [{}]", windowStart, windowEnd);
+
+        double baseLatitude = affectedVisits.isEmpty() ? 50 : affectedVisits.getFirst().getLatitude();
+        double[] metersAsDegrees = GeoUtils.metersToDegreesAtPosition(distanceThreshold, baseLatitude);
+        List<RawLocationPointJdbcService.ClusteredPoint> clusteredPointsInTimeRangeForUser = this.rawLocationPointJdbcService.findClusteredPointsInTimeRangeForUser(user, windowStart, windowEnd, minPointsInCluster, metersAsDegrees[0]);
         Map<Integer, List<RawLocationPoint>> clusteredByLocation = new HashMap<>();
-        for (RawLocationPointRepository.ClusteredPoint clusteredPoint : clusteredPointsInTimeRangeForUser) {
+        for (RawLocationPointJdbcService.ClusteredPoint clusteredPoint : clusteredPointsInTimeRangeForUser) {
             if (clusteredPoint.getClusterId() != null) {
-                clusteredByLocation.computeIfAbsent(clusteredPoint.getClusterId(), k -> new ArrayList<>()).add(clusteredPoint.getPoint());
+                clusteredByLocation.computeIfAbsent(clusteredPoint.getClusterId(), _ -> new ArrayList<>()).add(clusteredPoint.getPoint());
             }
         }
 
-        logger.debug("Found {} point clusters in the processing window", clusteredByLocation.size());
+        logger.debug("Found {} point clusters in the processing window from [{}] to [{}]", clusteredByLocation.size(), windowStart, windowEnd);
 
         // Apply the stay point detection algorithm
         List<StayPoint> stayPoints = detectStayPointsFromTrajectory(clusteredByLocation);
 
         logger.info("Detected {} stay points for user {}", stayPoints.size(), user.getUsername());
 
+        List<Visit> createdVisits = new ArrayList<>();
+
         for (StayPoint stayPoint : stayPoints) {
-            List<Visit> existingVisitByStart = this.visitRepository.findByUserAndStartTime(user, stayPoint.getArrivalTime());
-            List<Visit> existingVisitByEnd = this.visitRepository.findByUserAndEndTime(user, stayPoint.getDepartureTime());
-            List<Visit> overlappingVisits = this.visitRepository.findByUserAndStartTimeBeforeAndEndTimeAfter(user, stayPoint.getDepartureTime(), stayPoint.getArrivalTime());
-
-
-            Set<Visit> visitsToUpdate = new HashSet<>();
-            visitsToUpdate.addAll(existingVisitByStart);
-            visitsToUpdate.addAll(existingVisitByEnd);
-            visitsToUpdate.addAll(overlappingVisits);
-
-
-            for (Visit visit : visitsToUpdate) {
-                boolean changed = false;
-                if (stayPoint.getDepartureTime().isAfter(visit.getEndTime())) {
-                    visit.setEndTime(stayPoint.getDepartureTime());
-                    visit.setProcessed(false);
-                    changed = true;
-                }
-
-                if (stayPoint.getArrivalTime().isBefore(visit.getEndTime())) {
-                    visit.setStartTime(stayPoint.getArrivalTime().isBefore(visit.getStartTime()) ? stayPoint.getArrivalTime() : visit.getStartTime());
-                    visit.setProcessed(false);
-                    changed = true;
-                }
-
-                if (changed) {
-                    try {
-                        visitRepository.save(visit);
-                        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.MERGE_VISIT_ROUTING_KEY, new VisitUpdatedEvent(user.getUsername(), visit.getId()));
-                    } catch (Exception e) {
-                        logger.debug("Could not save updated visit: {}", visit);
-                    }
-                }
-            }
-
-            if (visitsToUpdate.isEmpty()) {
-                Visit visit = createVisit(user, stayPoint.getLongitude(), stayPoint.getLatitude(), stayPoint);
+                Visit visit = createVisit(stayPoint.getLongitude(), stayPoint.getLatitude(), stayPoint);
                 logger.debug("Creating new visit: {}", visit);
+                createdVisits.add(visit);
+        }
 
-                try {
-                    visit = visitRepository.save(visit);
-                    rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.MERGE_VISIT_ROUTING_KEY, new VisitCreatedEvent(user.getUsername(), visit.getId()));
-                } catch (Exception e) {
-                    logger.debug("Could not save new visit: {}", visit);
-                }
-            }
+        List<Long> createdIds = visitJdbcService.bulkInsert(user, createdVisits).stream().map(Visit::getId).toList();
+        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.MERGE_VISIT_ROUTING_KEY, new VisitUpdatedEvent(user.getUsername(), createdIds));
+        } finally {
+            userLock.unlock();
         }
     }
+
 
     private List<StayPoint> detectStayPointsFromTrajectory(Map<Integer, List<RawLocationPoint>> points) {
         logger.debug("Starting cluster-based stay point detection with {} different spatial clusters.", points.size());
@@ -207,14 +211,7 @@ public class VisitDetectionService {
         return new GeoPoint(latCentroid, lngCentroid);
     }
 
-    private Visit createVisit(User user, Double longitude, Double latitude, StayPoint stayPoint) {
-        Visit visit = new Visit();
-        visit.setUser(user);
-        visit.setLongitude(longitude);
-        visit.setLatitude(latitude);
-        visit.setStartTime(stayPoint.getArrivalTime());
-        visit.setEndTime(stayPoint.getDepartureTime());
-        visit.setDurationSeconds(stayPoint.getDurationSeconds());
-        return visit;
+    private Visit createVisit(Double longitude, Double latitude, StayPoint stayPoint) {
+        return new Visit(longitude, latitude, stayPoint.getArrivalTime(), stayPoint.getDepartureTime(), stayPoint.getDurationSeconds(), false);
     }
 }

@@ -1,147 +1,102 @@
 package com.dedicatedcode.reitti.model;
 
-import jakarta.persistence.*;
 import org.locationtech.jts.geom.Point;
 
+import java.io.Serializable;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-@Entity
-@Table(name = "significant_places")
-public class SignificantPlace {
+public class SignificantPlace implements Serializable {
     
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
-    private User user;
-    
-    @Column
-    private String name;
-    
-    @Column
-    private String address;
-    
-    @Column(nullable = false)
-    private Double latitudeCentroid;
-    
-    @Column(nullable = false)
-    private Double longitudeCentroid;
-    
-    @Column(columnDefinition = "geometry(Point,4326)")
-    private Point geom;
-    
-    @Column
-    private String category;
+    private final Long id;
+    private final String name;
+    private final String address;
+    private final Double latitudeCentroid;
+    private final Double longitudeCentroid;
+    private final Point geom;
+    private final String category;
+    private final boolean geocoded;
+    private final Long version;
 
-    @Column(nullable = false)
-    private boolean geocoded = false;
+    public SignificantPlace() {
+        this(null, null, null, null, null, null, null, false, null);
+    }
 
-    @OneToMany(mappedBy = "place", cascade = CascadeType.ALL, orphanRemoval = true)
-    private List<ProcessedVisit> visits = new ArrayList<>();
-
-    public SignificantPlace() {}
-
-    public SignificantPlace(User user,
-                            String name,
+    public SignificantPlace(String name,
                             String address,
                             Double latitudeCentroid,
                             Double longitudeCentroid,
                             Point geom,
                             String category) {
-        this.user = user;
+        this(null, name, address, latitudeCentroid, longitudeCentroid, geom, category, false, 1L);
+    }
+    
+    public SignificantPlace(Long id, String name, String address, Double latitudeCentroid, Double longitudeCentroid, Point geom, String category, boolean geocoded, Long version) {
+        this.id = id;
         this.name = name;
         this.address = address;
         this.latitudeCentroid = latitudeCentroid;
         this.longitudeCentroid = longitudeCentroid;
         this.geom = geom;
         this.category = category;
+        this.geocoded = geocoded;
+        this.version = version;
     }
 
     public Long getId() {
         return id;
     }
 
-    public void setId(Long id) {
-        this.id = id;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
     public String getName() {
         return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
     }
 
     public String getAddress() {
         return address;
     }
 
-    public void setAddress(String address) {
-        this.address = address;
-    }
-
     public Double getLatitudeCentroid() {
         return latitudeCentroid;
-    }
-
-    public void setLatitudeCentroid(Double latitudeCentroid) {
-        this.latitudeCentroid = latitudeCentroid;
     }
 
     public Double getLongitudeCentroid() {
         return longitudeCentroid;
     }
 
-    public void setLongitudeCentroid(Double longitudeCentroid) {
-        this.longitudeCentroid = longitudeCentroid;
-    }
-
     public String getCategory() {
         return category;
     }
 
-    public void setCategory(String category) {
-        this.category = category;
-    }
-
-    public List<ProcessedVisit> getVisits() {
-        return visits;
-    }
-
-    public void setVisits(List<ProcessedVisit> visits) {
-        this.visits = visits;
-    }
-    
     public Point getGeom() {
         return geom;
-    }
-    
-    public void setGeom(Point geom) {
-        this.geom = geom;
     }
 
     public boolean isGeocoded() { 
         return geocoded; 
     }
 
-    public void setGeocoded(boolean geocoded) { 
-        this.geocoded = geocoded; 
+    public Long getVersion() {
+        return version;
+    }
+    
+    // Wither methods
+    public SignificantPlace withGeocoded(boolean geocoded) {
+        return new SignificantPlace(this.id, this.name, this.address, this.latitudeCentroid, this.longitudeCentroid, this.geom, this.category, geocoded, this.version);
     }
 
+    public SignificantPlace withName(String name) {
+        return new SignificantPlace(this.id, name, this.address, this.latitudeCentroid, this.longitudeCentroid, this.geom, this.category, this.geocoded, this.version);
+    }
+
+    public SignificantPlace withAddress(String address) {
+        return new SignificantPlace(this.id, this.name, address, this.latitudeCentroid, this.longitudeCentroid, this.geom, this.category, this.geocoded, this.version);
+    }
+
+    public SignificantPlace withId(Long id) {
+        return new SignificantPlace(id, this.name, address, this.latitudeCentroid, this.longitudeCentroid, this.geom, this.category, this.geocoded, this.version);
+    }
     @Override
     public boolean equals(Object o) {
         if (o == null || getClass() != o.getClass()) return false;
@@ -158,9 +113,9 @@ public class SignificantPlace {
     public String toString() {
         return "SignificantPlace{" +
                 "id=" + id +
-                ", user=" + user +
                 ", name='" + name + '\'' +
                 ", geom=" + geom +
                 '}';
     }
+
 }
