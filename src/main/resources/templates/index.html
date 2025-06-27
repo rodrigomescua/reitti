@@ -30,9 +30,9 @@
         <span class="close-settings">&times;</span>
 
         <div class="settings-nav">
-            <div class="settings-nav-item" data-target="job-status" th:text="#{settings.job.status}">Job Status</div>
+            <div class="settings-nav-item active" data-target="job-status" th:text="#{settings.job.status}">Job Status</div>
             <div class="settings-nav-item" data-target="file-upload" th:text="#{settings.import.data}">Import Data</div>
-            <div class="settings-nav-item active" data-target="api-tokens" th:text="#{settings.api.tokens}">API Tokens</div>
+            <div class="settings-nav-item" data-target="api-tokens" th:text="#{settings.api.tokens}">API Tokens</div>
             <div class="settings-nav-item" data-target="user-management" th:text="#{settings.user.management}">User Management</div>
             <div class="settings-nav-item" data-target="places-management" th:text="#{settings.places}">Places</div>
             <div class="settings-nav-item" data-target="geocode-services" th:text="#{settings.geocoding}">Geocoding</div>
@@ -43,7 +43,7 @@
         </div>
 
         <!-- API Tokens Section -->
-        <div id="api-tokens" class="settings-section active" hx-get="/settings/api-tokens-content"
+        <div id="api-tokens" class="settings-section" hx-get="/settings/api-tokens-content"
              hx-trigger="revealed, every 30s">
             <div class="htmx-indicator">Loading tokens...</div>
         </div>
@@ -74,7 +74,7 @@
         </div>
 
         <!-- Job Status Section -->
-        <div id="job-status" class="settings-section" hx-get="/settings/queue-stats-content"
+        <div id="job-status" class="settings-section active" hx-get="/settings/queue-stats-content"
              hx-trigger="revealed, every 5s">
             <div class="htmx-indicator">Loading queue stats...</div>
         </div>
@@ -95,10 +95,9 @@
         </div>
 
         <script>
-            // Function to initialize maps for place cards
             function initPlaceMaps() {
 
-                document.querySelectorAll('.place-map').forEach(mapElement => {
+                document.querySelectorAll('.place-map:not(.leaflet-container)').forEach(mapElement => {
                     const lat = parseFloat(mapElement.dataset.lat);
                     const lng = parseFloat(mapElement.dataset.lng);
                     const placeMap = L.map(mapElement, {
@@ -108,14 +107,13 @@
                         scrollWheelZoom: false
                     })
 
-                    L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                    L.tileLayer.grayscale('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
                         maxZoom: 19,
                         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a> hosted by <a href="https://openstreetmap.fr/" target="_blank">OpenStreetMap France</a>'
                     }).addTo(placeMap);
 
                     if (!isNaN(lat) && !isNaN(lng)) {
                         placeMap.setView([lat, lng], 14);
-
 
                         L.circleMarker([lat, lng], {
                             radius: 8,

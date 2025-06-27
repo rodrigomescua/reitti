@@ -1,7 +1,8 @@
 package com.dedicatedcode.reitti.service.geocoding;
 
-import com.dedicatedcode.reitti.model.GeocodeService;
+import com.dedicatedcode.reitti.model.RemoteGeocodeService;
 import com.dedicatedcode.reitti.repository.GeocodeServiceJdbcService;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -23,15 +24,18 @@ public class DefaultGeocodeServiceManager implements GeocodeServiceManager {
     private static final Logger logger = LoggerFactory.getLogger(DefaultGeocodeServiceManager.class);
 
     private final GeocodeServiceJdbcService geocodeServiceJdbcService;
+    private final List<GeocodeService> fixedGeocodeServices;
     private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final int maxErrors;
 
     public DefaultGeocodeServiceManager(GeocodeServiceJdbcService geocodeServiceJdbcService,
+                                        List<GeocodeService> fixedGeocodeServices,
                                         RestTemplate restTemplate,
                                         ObjectMapper objectMapper,
                                         @Value("${reitti.geocoding.max-errors}") int maxErrors) {
         this.geocodeServiceJdbcService = geocodeServiceJdbcService;
+        this.fixedGeocodeServices = fixedGeocodeServices;
         this.restTemplate = restTemplate;
         this.objectMapper = objectMapper;
         this.maxErrors = maxErrors;
@@ -40,19 +44,28 @@ public class DefaultGeocodeServiceManager implements GeocodeServiceManager {
     @Transactional
     @Override
     public Optional<GeocodeResult> reverseGeocode(double latitude, double longitude) {
-        List<GeocodeService> availableServices = geocodeServiceJdbcService.findByEnabledTrueOrderByLastUsedAsc();
+        if (!fixedGeocodeServices.isEmpty()) {
+            logger.debug("Fixed geocode-service available, will first try this.");
+            Optional<GeocodeResult> geocodeResult = callGeocodeService(fixedGeocodeServices, latitude, longitude, true);
+            if (geocodeResult.isPresent()) {
+                return geocodeResult;
+            }
+        }
+        List<RemoteGeocodeService> availableServices = geocodeServiceJdbcService.findByEnabledTrueOrderByLastUsedAsc();
 
         if (availableServices.isEmpty()) {
             logger.warn("No enabled geocoding services available");
             return Optional.empty();
         }
+        return callGeocodeService(availableServices, latitude, longitude, false);
+    }
 
-        // Shuffle to distribute load randomly
+    private Optional<GeocodeResult> callGeocodeService(List<? extends GeocodeService> availableServices, double latitude, double longitude, boolean photon) {
         Collections.shuffle(availableServices);
 
         for (GeocodeService service : availableServices) {
             try {
-                Optional<GeocodeResult> result = performGeocode(service, latitude, longitude);
+                Optional<GeocodeResult> result = performGeocode(service, latitude, longitude, photon);
                 if (result.isPresent()) {
                     recordSuccess(service);
                     return result;
@@ -66,7 +79,7 @@ public class DefaultGeocodeServiceManager implements GeocodeServiceManager {
         return Optional.empty();
     }
 
-    private Optional<GeocodeResult> performGeocode(GeocodeService service, double latitude, double longitude) {
+    private Optional<GeocodeResult> performGeocode(GeocodeService service, double latitude, double longitude, boolean photon) {
         String url = service.getUrlTemplate()
                 .replace("{lat}", String.valueOf(latitude))
                 .replace("{lng}", String.valueOf(longitude));
@@ -76,62 +89,85 @@ public class DefaultGeocodeServiceManager implements GeocodeServiceManager {
         try {
 
             String response = restTemplate.getForObject(url, String.class);
-            JsonNode root = objectMapper.readTree(response);
-            JsonNode features = root.path("features");
-
-            if (features.isArray() && !features.isEmpty()) {
-                JsonNode properties = features.get(0).path("properties");
-
-                String label;
-                String street;
-                String city;
-                String district;
-
-                //try to find elements from address;
-                JsonNode address = properties.path("address");
-                if (address.isMissingNode()) {
-                    label = properties.path("formatted").asText("");
-                    street = properties.path("street").asText("");
-                    city = properties.path("city").asText("");
-                    district = properties.path("district").asText("");
-                } else {
-                    label = properties.path("name").asText("");
-                    street = address.path("road").asText("");
-                    city = address.path("city").asText("");
-                    district = address.path("city_district").asText("");
-                }
-
-
-                if (label.isEmpty() && !street.isEmpty()) {
-                    label = street;
-                }
-                if (StringUtils.hasText(label)) {
-                    return Optional.of(new GeocodeResult(label, street, city, district));
-                }
-            }
+            return photon ? extractPhotonResult(response) : extractGeoCodeResult(response);
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to call geocoding service: " + e.getMessage(), e);
         }
+    }
 
+    private Optional<GeocodeResult> extractPhotonResult(String response) throws JsonProcessingException {
+        JsonNode root = objectMapper.readTree(response);
+        JsonNode features = root.path("features");
+        if (features.isArray() && !features.isEmpty()) {
+            JsonNode properties = features.get(0).path("properties");
+            String name = properties.path("name").asText();
+            String city = properties.path("city").asText();
+            String street = properties.path("street").asText();
+            String district = properties.path("district").asText();
+            String housenumber = properties.path("housenumber").asText();
+            String postcode = properties.path("postcode").asText();
+
+            return Optional.of(new GeocodeResult(name, street, housenumber, city, postcode, district));
+        }
+        return Optional.empty();
+    }
+    private Optional<GeocodeResult> extractGeoCodeResult(String response) throws JsonProcessingException {
+        JsonNode root = objectMapper.readTree(response);
+        JsonNode features = root.path("features");
+
+        if (features.isArray() && !features.isEmpty()) {
+            JsonNode properties = features.get(0).path("properties");
+
+            String label;
+            String street;
+            String city;
+            String district;
+
+            //try to find elements from address;
+            JsonNode address = properties.path("address");
+            if (address.isMissingNode()) {
+                label = properties.path("formatted").asText("");
+                street = properties.path("street").asText("");
+                city = properties.path("city").asText("");
+                district = properties.path("district").asText("");
+            } else {
+                label = properties.path("name").asText("");
+                street = address.path("road").asText("");
+                city = address.path("city").asText("");
+                district = address.path("city_district").asText("");
+            }
+
+
+            if (label.isEmpty() && !street.isEmpty()) {
+                label = street;
+            }
+            if (StringUtils.hasText(label)) {
+                return Optional.of(new GeocodeResult(label, street, "", city,  "", district));
+            }
+        }
         return Optional.empty();
     }
 
     private void recordSuccess(GeocodeService service) {
-        geocodeServiceJdbcService.save(service.withLastUsed(Instant.now()));
+        if (service instanceof RemoteGeocodeService) {
+            geocodeServiceJdbcService.save(((RemoteGeocodeService) service).withLastUsed(Instant.now()));
+        }
     }
 
     private void recordError(GeocodeService service) {
-        GeocodeService update = service
-                .withIncrementedErrorCount()
-                .withLastError(Instant.now());
+        if (service instanceof RemoteGeocodeService) {
+            RemoteGeocodeService update = ((RemoteGeocodeService) service)
+                    .withIncrementedErrorCount()
+                    .withLastError(Instant.now());
 
-        if (update.getErrorCount() >= maxErrors) {
-            update = update.withEnabled(false);
-            logger.warn("Geocoding service [{}] disabled due to too many errors ([{}]/[{}])",
-                    update.getName(), update.getErrorCount(), maxErrors);
+            if (update.getErrorCount() >= maxErrors) {
+                update = update.withEnabled(false);
+                logger.warn("Geocoding service [{}] disabled due to too many errors ([{}]/[{}])",
+                        update.getName(), update.getErrorCount(), maxErrors);
+            }
+
+            geocodeServiceJdbcService.save(update);
         }
-
-        geocodeServiceJdbcService.save(service);
     }
 }
