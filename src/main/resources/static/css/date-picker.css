@@ -52,6 +52,16 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+.date-item.unavailable {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.date-item.unavailable:hover {
+    background-color: transparent;
+    transform: none;
+}
+
 .date-item .day-name {
     font-size: 0.8rem;
     opacity: 0.8;
@@ -133,7 +143,6 @@
     position: absolute;
     left: 10px;
     padding: 4px 12px;
-    background-color: rgba(74, 137, 220, 0.8);
     color: white;
     border-radius: 16px;
     cursor: pointer;
@@ -142,10 +151,11 @@
     display: flex;
     align-items: center;
     gap: 5px;
+    z-index: 10;
 }
 
 .today-button:hover {
-    background-color: rgba(74, 137, 220, 1);
+    background-color: rgba(255, 255, 255, 0.2);
 }
 
 .year-item {
@@ -167,6 +177,16 @@
 .year-item.selected {
     background-color: #4a89dc;
     color: white;
+}
+
+.year-item.unavailable {
+    opacity: 0.4;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.year-item.unavailable:hover {
+    background-color: transparent;
 }
 
 .month-row {
@@ -205,6 +225,16 @@
     color: white;
 }
 
+.month-item.unavailable {
+    opacity: 0.4;
+    color: #999;
+    cursor: not-allowed;
+}
+
+.month-item.unavailable:hover {
+    background-color: transparent;
+}
+
 .month-item .year-label {
     position: absolute;
     top: -12px;
@@ -230,5 +260,10 @@
         min-width: 50px;
         padding: 4px 8px;
         font-size: 0.7rem;
+    }
+
+    .today-button {
+        justify-content: center;
+        position: initial;
     }
 }
