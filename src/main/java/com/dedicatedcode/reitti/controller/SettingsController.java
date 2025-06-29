@@ -19,6 +19,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.util.StringUtils;
@@ -115,7 +116,9 @@ public class SettingsController {
 
     @GetMapping("/api-tokens-content")
     public String getApiTokensContent(Authentication authentication, Model model) {
-        User currentUser = userJdbcService.getUserByUsername(authentication.getName());
+        String username = authentication.getName();
+        User currentUser = userJdbcService.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
         model.addAttribute("tokens", apiTokenService.getTokensForUser(currentUser));
         return "fragments/settings :: api-tokens-content";
     }
@@ -133,7 +136,9 @@ public class SettingsController {
     public String getPlacesContent(Authentication authentication,
                                    @RequestParam(defaultValue = "0") int page,
                                    Model model) {
-        User currentUser = userJdbcService.getUserByUsername(authentication.getName());
+        String username = authentication.getName();
+        User currentUser = userJdbcService.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
         Page<SignificantPlace> placesPage = placeService.getPlacesForUser(currentUser, PageRequest.of(page, 20));
 
         // Convert to PlaceInfo objects
@@ -159,7 +164,9 @@ public class SettingsController {
 
     @PostMapping("/tokens")
     public String createToken(Authentication authentication, @RequestParam String name, Model model) {
-        User user = userJdbcService.getUserByUsername(authentication.getName());
+        String username = authentication.getName();
+        User user = userJdbcService.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
         try {
             apiTokenService.createToken(user, name);
@@ -178,7 +185,9 @@ public class SettingsController {
 
     @PostMapping("/tokens/{tokenId}/delete")
     public String deleteToken(@PathVariable Long tokenId, Authentication authentication, Model model) {
-        User user = userJdbcService.getUserByUsername(authentication.getName());
+        String username = authentication.getName();
+        User user = userJdbcService.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
         try {
             apiTokenService.deleteToken(tokenId);
@@ -198,7 +207,8 @@ public class SettingsController {
     @PostMapping("/users/{userId}/delete")
     public String deleteUser(@PathVariable Long userId, Authentication authentication, Model model) {
         String currentUsername = authentication.getName();
-        User currentUser = userJdbcService.getUserByUsername(currentUsername);
+        User currentUser = userJdbcService.findByUsername(currentUsername)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + currentUsername));
 
         // Prevent self-deletion
         if (currentUser.getId().equals(userId)) {
@@ -313,7 +323,8 @@ public class SettingsController {
                              Authentication authentication,
                              Model model) {
         String currentUsername = authentication.getName();
-        User currentUser = userJdbcService.getUserById(userId);
+        User currentUser = userJdbcService.findById(userId)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + userId));
         boolean isCurrentUser = currentUser.getId().equals(userId);
 
         try {
@@ -373,7 +384,9 @@ public class SettingsController {
 
     @GetMapping("/integrations-content")
     public String getIntegrationsContent(Authentication authentication, Model model, HttpServletRequest request) {
-        User currentUser = userJdbcService.getUserByUsername(authentication.getName());
+        String username = authentication.getName();
+        User currentUser = userJdbcService.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
         List<ApiToken> tokens = apiTokenService.getTokensForUser(currentUser);
 
         // Add the first token if available
@@ -405,7 +418,9 @@ public class SettingsController {
 
     @GetMapping("/photos-content")
     public String getPhotosContent(Authentication authentication, Model model) {
-        User currentUser = userJdbcService.getUserByUsername(authentication.getName());
+        String username = authentication.getName();
+        User currentUser = userJdbcService.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
         Optional<ImmichIntegration> integration = immichIntegrationService.getIntegrationForUser(currentUser);
         
         if (integration.isPresent()) {
@@ -424,7 +439,9 @@ public class SettingsController {
                                        @RequestParam(defaultValue = "false") boolean enabled,
                                        Authentication authentication,
                                        Model model) {
-        User currentUser = userJdbcService.getUserByUsername(authentication.getName());
+        String username = authentication.getName();
+        User currentUser = userJdbcService.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
         
         try {
             ImmichIntegration integration = immichIntegrationService.saveIntegration(
@@ -676,7 +693,9 @@ public class SettingsController {
         }
 
         try {
-            User currentUser = userJdbcService.getUserByUsername(authentication.getName());
+            String username = authentication.getName();
+            User currentUser = userJdbcService.findByUsername(username)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
             
             // Clear all processed data except SignificantPlaces
             // This would need to be implemented in appropriate service classes
@@ -697,6 +716,28 @@ public class SettingsController {
         return "fragments/settings :: manage-data-content";
     }
 
+    @PostMapping("/manage-data/remove-all-data")
+    public String removeAllData(Authentication authentication, Model model) {
+        if (!dataManagementEnabled) {
+            throw new RuntimeException("Data management is not enabled");
+        }
+
+        try {
+            String username = authentication.getName();
+            User currentUser = userJdbcService.findByUsername(username)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+            
+            // Remove all data except SignificantPlaces
+            removeAllDataExceptPlaces(currentUser);
+            
+            model.addAttribute("successMessage", getMessage("data.remove.all.success"));
+        } catch (Exception e) {
+            model.addAttribute("errorMessage", getMessage("data.remove.all.error", e.getMessage()));
+        }
+
+        return "fragments/settings :: manage-data-content";
+    }
+
     private void clearProcessedDataExceptPlaces(User user) {
         // Clear all processed data except SignificantPlaces
         // Order matters due to foreign key constraints
@@ -708,6 +749,15 @@ public class SettingsController {
     private void markRawLocationPointsAsUnprocessed(User user) {
         // Mark all raw location points for the user as unprocessed
         rawLocationPointJdbcService.markAllAsUnprocessedForUser(user);
+    }
+
+    private void removeAllDataExceptPlaces(User user) {
+        // Remove all data except SignificantPlaces
+        // Order matters due to foreign key constraints
+        tripJdbcService.deleteAllForUser(user);
+        processedVisitJdbcService.deleteAllForUser(user);
+        visitJdbcService.deleteAllForUser(user);
+        rawLocationPointJdbcService.deleteAllForUser(user);
     }
 
     @GetMapping("/geocode-services-content")
@@ -768,7 +818,9 @@ public class SettingsController {
     @PostMapping("/geocode-services/run-geocoding")
     public String runGeocoding(Authentication authentication, Model model) {
         try {
-            User currentUser = userJdbcService.getUserByUsername(authentication.getName());
+            String username = authentication.getName();
+            User currentUser = userJdbcService.findByUsername(username)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
             
             // Find all non-geocoded significant places for the user
             List<SignificantPlace> nonGeocodedPlaces = placeJdbcService.findNonGeocodedByUser(currentUser);
@@ -800,7 +852,9 @@ public class SettingsController {
     @PostMapping("/geocode-services/clear-and-rerun")
     public String clearAndRerunGeocoding(Authentication authentication, Model model) {
         try {
-            User currentUser = userJdbcService.getUserByUsername(authentication.getName());
+            String username = authentication.getName();
+            User currentUser = userJdbcService.findByUsername(username)
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
             
             // Find all significant places for the user
             List<SignificantPlace> allPlaces = placeJdbcService.findAllByUser(currentUser);
