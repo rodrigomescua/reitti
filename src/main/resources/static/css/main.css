@@ -349,7 +349,7 @@ nav {
 
 .timeline-entry.active {
     color: #f8f8f8;
-    padding: 1rem 2.5rem;
+    padding: 1rem 0 0 2.5rem;
     transition: color, padding 0.5s ease-in-out;
 }
 
@@ -363,7 +363,9 @@ nav {
     font-family: "Fraunces";
     font-size: 5rem;
     transition: font-size 0.5s ease-in-out;
+    position: relative;
 }
+
 
 .htmx-request .htmx-indicator {
     display: inline;
@@ -708,14 +710,6 @@ input[type=file]::file-selector-button:hover {
     overflow: hidden;
     border: 3px solid var(--color-highlight);
     position: relative;
-}
-
-.place-name {
-    font-size: 1.3rem;
-    font-weight: 500;
-    color: var(--color-highlight);
-    margin-bottom: 0.8rem;
-    word-wrap: break-word;
 }
 
 .place-stats {

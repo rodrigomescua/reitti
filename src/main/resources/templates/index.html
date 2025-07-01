@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/css/main.css">
     <link rel="stylesheet" href="/css/lineicons.css">
     <link rel="stylesheet" href="/css/photo-client.css">
+    <link rel="stylesheet" href="/css/inline-edit.css">
     <script src="/js/HumanizeDuration.js"></script>
     <script src="/js/horizontal-date-picker.js"></script>
     <script src="/js/timeline-scroll-indicator.js"></script>
@@ -161,9 +162,12 @@
         </form>
     </span>
 
-    <div class="timeline-container">
-        <div id="loading-indicator" style="display: none;" class="timeline-entry" th:text="#{timeline.loading}">Loading...</div>
-        <!-- Timeline entries will be loaded here -->
+    <div class="timeline-container" 
+         hx-get="/timeline/content"
+         hx-trigger="load, dateChanged from:body"
+         hx-vals='js:{"date": getSelectedDate()}'
+         hx-indicator="#loading-indicator">
+        <div id="loading-indicator" class="timeline-entry" th:text="#{timeline.loading}">Loading...</div>
     </div>
 </div>
 
@@ -209,6 +213,20 @@
     
     // Set locale for HumanizeDuration
     const currentLocale = /*[[${#locale.language}]]*/ 'en';
+
+    // Helper function for HTMX to get current selected date
+    function getSelectedDate() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('date') || new Date().toISOString().split('T')[0];
+    }
+
+    const fitToBoundsConfig = {
+        padding: [50, 100]
+    };
+
+    const fitToBoundsConfigZoomed = {
+        padding: [50, 100]
+    };
 
     document.addEventListener('DOMContentLoaded', function () {
         // Settings overlay functionality
@@ -338,17 +356,14 @@
         }
 
         // Initialize the map
-        const map = L.map('map').setView([60.1699, 24.9384], 12); // Helsinki coordinates as default
+        const map = L.map('map', {zoomControl: false, attributionControl: false}).setView([60.1699, 24.9384], 12); // Helsinki coordinates as default
         L.tileLayer.grayscale('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a> hosted by <a href="https://openstreetmap.fr/" target="_blank">OpenStreetMap France</a>'
         }).addTo(map);
 
-        // Add scale control
-        L.control.scale({
-            imperial: false,
-            metric: true
-        }).addTo(map);
+        L.control.attribution({position: 'topright'}).addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a> hosted by <a href="https://openstreetmap.fr/" target="_blank">OpenStreetMap France</a>')
+            .addTo(map)
 
         // Initialize photo client
         const photoClient = new PhotoClient(map);
@@ -358,52 +373,36 @@
             photoClient.onMapMoveEnd();
         });
 
-        // Function to load timeline data
         function loadTimelineData(date) {
-            const loadingIndicator = document.getElementById('loading-indicator');
-            loadingIndicator.style.display = 'block';
-
-            // Cleanup existing scroll indicator
-            if (window.timelineScrollIndicator) {
-                window.timelineScrollIndicator.cleanup();
-                window.timelineScrollIndicator = null;
-            }
-
             // Load photos for the selected date
             photoClient.updatePhotosForDate(date);
 
-            // Fetch both timeline data and raw location points
-            Promise.all([
-                fetch(`/api/timeline?selectedDate=${date}`).then(response => {
-                    if (!response.ok) {
-                        throw new Error('Network response was not ok');
-                    }
-                    return response.json();
-                }),
-                fetch(`/api/v1/raw-location-points?date=${date}`).then(response => {
-                    if (!response.ok) {
-                        // If endpoint doesn't exist or returns error, just return empty array
-                        console.warn('Could not fetch raw location points');
-                        return { points: [] };
-                    }
-                    return response.json();
-                }).catch(error => {
-                    console.warn('Error fetching raw location points:', error);
+            // Fetch raw location points for map display
+            fetch(`/api/v1/raw-location-points?date=${date}`).then(response => {
+                if (!response.ok) {
+                    console.warn('Could not fetch raw location points');
                     return { points: [] };
-                })
-            ])
-            .then(([timelineData, rawPointsData]) => {
-                updateTimeline(timelineData, rawPointsData);
-                loadingIndicator.style.display = 'none';
-                
-                // Initialize scroll indicator after timeline is updated
-                window.timelineScrollIndicator = new TimelineScrollIndicator();
-                window.timelineScrollIndicator.init();
-            })
-            .catch(error => {
-                console.error('Error fetching data:', error);
-                loadingIndicator.style.display = 'none';
+                }
+                return response.json();
+            }).then(rawPointsData => {
+                updateMapWithRawPoints(rawPointsData);
+            }).catch(error => {
+                console.warn('Error fetching raw location points:', error);
             });
+        }
+
+        // Function to update map with raw location points
+        function updateMapWithRawPoints(rawPointsData) {
+            // Remove existing raw points path
+            rawPointsPath.remove();
+
+            // Add raw location points if available
+            if (rawPointsData && rawPointsData.points && rawPointsData.points.length > 0) {
+                const rawPointsCoords = rawPointsData.points.map(point => [point.latitude, point.longitude]);
+                rawPointsPath.setLatLngs(rawPointsCoords);
+                rawPointsPath.addTo(map);
+                map.fitBounds(rawPointsCoords, fitToBoundsConfig)
+            }
         }
 
         const selectedPath = L.polyline([], {
@@ -423,221 +422,93 @@
             lineCap: 'round'
         });
 
-        // Function to update the timeline with fetched data
-        function updateTimeline(data, rawPointsData) {
-            const timelineContainer = document.querySelector('.timeline-container');
-            const loadingIndicator = document.getElementById('loading-indicator');
-            timelineContainer.innerHTML = '';
-            timelineContainer.appendChild(loadingIndicator);
 
-            // Clear existing markers and paths
+        // Add HTMX event handlers for timeline updates
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            if (event.detail.target.classList.contains('timeline-container')) {
+                // Timeline content has been updated, update map markers
+                updateMapFromTimeline();
+                loadTimelineData(getSelectedDate())
+                // Initialize scroll indicator after timeline is updated
+                if (window.timelineScrollIndicator) {
+                    window.timelineScrollIndicator.cleanup();
+                }
+                window.timelineScrollIndicator = new TimelineScrollIndicator();
+                window.timelineScrollIndicator.init();
+            }
+        });
+
+        // Function to update map markers from timeline entries
+        function updateMapFromTimeline() {
+            // Clear existing markers and paths (except tile layer)
             map.eachLayer(layer => {
                 if (!layer._url) {
                     map.removeLayer(layer);
                 }
             });
 
-            if (!data || !data.entries || data.entries.length === 0) {
-                const noDataMsg = document.createElement('div');
-                noDataMsg.className = 'timeline-entry';
-                noDataMsg.textContent = window.locale.noData;
-                timelineContainer.appendChild(noDataMsg);
-                return;
-            }
-
             const bounds = L.latLngBounds();
-            // Store the original bounds for deselection
             window.originalBounds = L.latLngBounds();
-
             let hasValidCoords = false;
 
             // Group places by coordinates to avoid duplicate markers
             const placeGroups = new Map();
 
-            // Create timeline entries
-            data.entries.forEach(entry => {
-                const entryElement = document.createElement('div');
-                entryElement.className = `timeline-entry ${entry.type.toLowerCase()}`;
-                entryElement.dataset.id = entry.id;
-
-                // Set coordinates based on entry type
-                if (entry.type === 'VISIT' && entry.place) {
-                    entryElement.dataset.lat = entry.place.latitude;
-                    entryElement.dataset.lng = entry.place.longitude;
-                } else if (entry.type === 'TRIP') {
-                    // For trips, use start place coordinates
-                    if (entry.startPlace) {
-                        entryElement.dataset.lat = entry.startPlace.latitude;
-                        entryElement.dataset.lng = entry.startPlace.longitude;
-                    }
-
-                    // If trip has path data, add it
-                    if (entry.path) {
-                        entryElement.dataset.path = JSON.stringify(entry.path);
-                    }
-                }
-
-                // Create time element
-                const timeElement = document.createElement('div');
-                timeElement.className = 'entry-time';
-                const startTime = new Date(entry.startTime);
-                const endTime = new Date(entry.endTime);
-                
-                // Get the selected date from the URL or use today
-                const urlParams = new URLSearchParams(window.location.search);
-                let selectedDateStr = urlParams.get('date');
-                const selectedDate = selectedDateStr ? new Date(selectedDateStr) : new Date();
-                selectedDate.setHours(0, 0, 0, 0); // Set to beginning of day
-                
-                // Format start time
-                let startTimeStr = startTime.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                });
-                
-                // If start time is not on the selected day, add day and month
-                if (startTime.getDate() !== selectedDate.getDate() || 
-                    startTime.getMonth() !== selectedDate.getMonth() || 
-                    startTime.getFullYear() !== selectedDate.getFullYear()) {
-                    startTimeStr = startTime.toLocaleDateString([], {
-                        day: 'numeric',
-                        month: 'short'
-                    }) + ' ' + startTimeStr;
-                }
-                
-                // Format end time
-                let endTimeStr = endTime.toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: false
-                });
-                
-                // If end time is not on the selected day, add day and month
-                if (endTime.getDate() !== selectedDate.getDate() || 
-                    endTime.getMonth() !== selectedDate.getMonth() || 
-                    endTime.getFullYear() !== selectedDate.getFullYear()) {
-                    endTimeStr = endTime.toLocaleDateString([], {
-                        day: 'numeric',
-                        month: 'short'
-                    }) + ' ' + endTimeStr;
-                }
-                
-                timeElement.textContent = `${startTimeStr} - ${endTimeStr}`;
-
-                // Calculate duration
-                const durationMs = endTime - startTime;
-                const durationText = humanizeDuration(durationMs, {
-                    units: ["h", "m"], 
-                    round: true,
-                    language: currentLocale
-                });
-
-                const durationElement = document.createElement('span');
-                durationElement.className = 'entry-duration';
-                durationElement.textContent = `${window.locale.duration}: ${durationText}`;
-
-                // Create description element
-                const descElement = document.createElement('div');
-                descElement.className = 'entry-description';
-
-                if (entry.type === 'VISIT') {
-                    descElement.textContent = entry.place ? entry.place.name || 'Unknown Place' : 'Unknown Place';
-                } else if (entry.type === 'TRIP') {
-                    descElement.textContent = window.locale.trip;
-                    if (entry.distanceMeters) {
-                        const distanceKm = (entry.distanceMeters / 1000).toFixed(1);
-                        durationElement.textContent = `${window.locale.distance}: ${distanceKm} km `;
-                    }
-
-                    if (entry.transportMode) {
-                        switch (entry.transportMode) {
-                            case 'WALKING':
-                                durationElement.textContent += entry.distanceMeters ? ` ${window.locale.transportWalking}` : ` ${window.locale.transportWalking}`;
-                                break;
-                            case 'CYCLING':
-                                durationElement.textContent += entry.distanceMeters ? ` ${window.locale.transportCycling}` : ` ${window.locale.transportCycling}`;
-                                break;
-                            case 'DRIVING':
-                                durationElement.textContent += entry.distanceMeters ? ` ${window.locale.transportDriving}` : ` ${window.locale.transportDriving}`;
-                                break;
-                        }
-
-                    }
-                }
-
-                // Add elements to entry
-                entryElement.appendChild(descElement);
-                entryElement.appendChild(durationElement);
-                entryElement.appendChild(timeElement);
-
-                // Add entry to timeline
-                timelineContainer.appendChild(entryElement);
-
-                // Group places by coordinates for visits
+            // Get all timeline entries from the DOM
+            const timelineEntries = document.querySelectorAll('.timeline-entry[data-lat][data-lng]');
+            
+            timelineEntries.forEach(entryElement => {
                 const lat = parseFloat(entryElement.dataset.lat);
                 const lng = parseFloat(entryElement.dataset.lng);
-
-                if (!isNaN(lat) && !isNaN(lng) && entry.type === 'VISIT') {
+                
+                if (!isNaN(lat) && !isNaN(lng) && entryElement.classList.contains('visit')) {
                     const coordKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
                     
                     if (!placeGroups.has(coordKey)) {
+                        // Extract place name from the timeline entry
+                        const placeNameElement = entryElement.querySelector('.place-name');
+                        const placeName = placeNameElement ? placeNameElement.textContent : 'Unknown Place';
+                        
                         placeGroups.set(coordKey, {
                             lat: lat,
                             lng: lng,
                             totalDurationMs: 0,
                             visits: [],
-                            place: entry.place
+                            place: { name: placeName, address: '' }
                         });
                     }
                     
                     const group = placeGroups.get(coordKey);
-                    const durationMs = new Date(entry.endTime) - new Date(entry.startTime);
-                    group.totalDurationMs += durationMs;
-                    group.visits.push(entry);
+                    // Calculate duration from time range text
+                    const durationElement = entryElement.querySelector('.entry-duration');
+                    if (durationElement) {
+                        const durationText = durationElement.textContent;
+                        const durationMs = parseDurationText(durationText);
+                        group.totalDurationMs += durationMs;
+                    }
+                    group.visits.push({ id: entryElement.dataset.id });
                     
                     bounds.extend([lat, lng]);
                     window.originalBounds.extend([lat, lng]);
                     hasValidCoords = true;
                 }
-
             });
-
-            // Add raw location points if available
-            if (rawPointsData && rawPointsData.points && rawPointsData.points.length > 0) {
-                const rawPointsCoords = rawPointsData.points.map(point => [point.latitude, point.longitude]);
-
-                rawPointsPath.remove();
-                // Add the raw points polyline to the map
-                rawPointsPath.setLatLngs(rawPointsCoords);
-                rawPointsPath.addTo(map);
-
-                // Extend bounds with raw points
-                const rawPointsBounds = L.latLngBounds(rawPointsCoords);
-                if (rawPointsBounds.isValid()) {
-                    bounds.extend(rawPointsBounds);
-                    window.originalBounds.extend(rawPointsBounds);
-                    hasValidCoords = true;
-                }
-            }
 
             // Draw markers for grouped places
             placeGroups.forEach((group, coordKey) => {
                 const { lat, lng, totalDurationMs, visits, place } = group;
                 
-                // Calculate radius using logarithmic scale to prevent extreme differences
-                // Base radius of 15m, with logarithmic scaling for duration
+                // Calculate radius using logarithmic scale
                 const durationHours = totalDurationMs / (1000 * 60 * 60);
                 const baseRadius = 15;
                 const maxRadius = 100;
                 const minRadius = 15;
                 
-                // Use logarithmic scale: log(1 + duration) to smooth out differences
-                const logScale = Math.log(1 + durationHours) / Math.log(1 + 24); // Normalize to 24 hours
+                const logScale = Math.log(1 + durationHours) / Math.log(1 + 24);
                 const radius = Math.min(maxRadius, Math.max(minRadius, baseRadius + (logScale * (maxRadius - baseRadius))));
 
                 // Create marker
-                const marker = L.circleMarker([lat, lng], {
+                L.circleMarker([lat, lng], {
                     radius: 5,
                     fillColor: '#ff6c00',
                     color: '#fff',
@@ -660,7 +531,6 @@
                 
                 let tooltip = L.tooltip([lat, lng], {
                     content: `<div style="font-size: 1.4rem; color: wheat">${place.name}</div>
-                             <div>Address:<br />${place.address}</div>
                              <div style="margin-top: 4px; font-weight: bold;">
                                  ${visitCount} ${visitText} - Total: ${totalDurationText}
                              </div>`,
@@ -673,18 +543,27 @@
 
             // Fit map to bounds if we have valid coordinates
             if (hasValidCoords) {
-                map.fitBounds(bounds, {
-                    padding: [50, 50],
-                    maxZoom: 16
-                });
+                map.fitBounds(bounds, fitToBoundsConfig);
             }
+        }
+
+        // Helper function to parse duration text (simple implementation)
+        function parseDurationText(durationText) {
+            // Extract numbers followed by 'h' or 'm'
+            const hours = (durationText.match(/(\d+)h/) || [0, 0])[1];
+            const minutes = (durationText.match(/(\d+)m/) || [0, 0])[1];
+            return (parseInt(hours) * 60 + parseInt(minutes)) * 60 * 1000; // Convert to milliseconds
         }
 
         // Handle clicks on timeline entries
         document.querySelector('.timeline-container').addEventListener('click', function (event) {
             const entry = event.target.closest('.timeline-entry');
             if (!entry) return;
-            
+
+            const editingElement = event.target.closest('.editing');
+            if (editingElement || event.target.classList.contains('edit-icon')) {
+                return;
+            }
             // Check if this entry is already active (deselection case)
             const isCurrentlyActive = entry.classList.contains('active');
             
@@ -698,10 +577,7 @@
             if (isCurrentlyActive) {
                 // Deselection: zoom back to original bounds showing all data
                 if (window.originalBounds && window.originalBounds.isValid()) {
-                    map.flyToBounds(window.originalBounds, {
-                        padding: [50, 50],
-                        maxZoom: 16
-                    });
+                    map.flyToBounds(window.originalBounds, fitToBoundsConfig);
                 }
             } else {
                 // Selection: zoom to specific entry
@@ -726,14 +602,13 @@
                 }
                     
                 if (newBounds.isValid()) {
-                    map.flyToBounds(newBounds, {
-                        padding: [50, 50],
-                        maxZoom: 16
-                    });
+                    map.flyToBounds(newBounds, fitToBoundsConfigZoomed);
                 }
             }
         });
 
+        // Load initial timeline data via HTMX (will be triggered by the hx-trigger="load")
+        // Also load photos and raw points for the initial date
         loadTimelineData(formattedDate);
 
         // Parse the initial date properly to ensure correct date picker initialization
@@ -760,9 +635,8 @@
             onDateSelect: (date, formattedDate) => {
                 // Update URL
                 updateUrlWithDate(formattedDate);
-
-                // Load timeline data
-                loadTimelineData(formattedDate);
+                // Trigger HTMX reload of timeline
+                document.body.dispatchEvent(new CustomEvent('dateChanged'));
             },
             onDateDeselect: () => {
                 // Clear photos when no date is selected
