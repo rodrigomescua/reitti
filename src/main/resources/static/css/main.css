@@ -1,3 +1,32 @@
+/* fraunces-100 - latin_latin-ext_vietnamese */
+@font-face {
+    font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+    font-family: 'Fraunces';
+    font-style: normal;
+    font-weight: 100;
+    src: url('/fonts/fraunces-v37-latin_latin-ext_vietnamese-100.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+/* fraunces-regular - latin_latin-ext_vietnamese */
+@font-face {
+    font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+    font-family: 'Fraunces';
+    font-style: normal;
+    font-weight: 400;
+    src: url('/fonts/fraunces-v37-latin_latin-ext_vietnamese-regular.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+/* fraunces-900 - latin_latin-ext_vietnamese */
+@font-face {
+    font-display: swap; /* Check https://developer.mozilla.org/en-US/docs/Web/CSS/@font-face/font-display for other options. */
+    font-family: 'Fraunces';
+    font-style: normal;
+    font-weight: 900;
+    src: url('/fonts/fraunces-v37-latin_latin-ext_vietnamese-900.woff2') format('woff2'); /* Chrome 36+, Opera 23+, Firefox 39+, Safari 12+, iOS 10+ */
+}
+
+
+
 :root {
     --color-highlight: #F5DEB3FF;
     --color-background-dark: #3b3b3b;
@@ -18,96 +47,96 @@ body {
     height: 100vh;
 }
 
-/* Settings Overlay Styles */
-.settings-overlay {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    overflow: auto;
-    background-color: rgba(0, 0, 0, 0.7);
-    backdrop-filter: blur(5px);
-}
+/*!* Settings Overlay Styles *!*/
+/*.settings-overlay {*/
+/*    display: none;*/
+/*    position: fixed;*/
+/*    z-index: 1000;*/
+/*    left: 0;*/
+/*    top: 0;*/
+/*    width: 100%;*/
+/*    height: 100%;*/
+/*    overflow: auto;*/
+/*    background-color: rgba(0, 0, 0, 0.7);*/
+/*    backdrop-filter: blur(5px);*/
+/*}*/
 
-.settings-content {
-    background-color: var(--color-background-dark);
-    color: var(--color-text-white);
-    margin: 5% auto;
-    padding: 20px;
-    border-radius: 8px;
-    width: 80%;
-    max-width: 90%;
-    max-height: 85vh;
-    overflow-y: auto;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-    position: relative;
-}
+/*.settings-content {*/
+/*    background-color: var(--color-background-dark);*/
+/*    color: var(--color-text-white);*/
+/*    margin: 5% auto;*/
+/*    padding: 20px;*/
+/*    border-radius: 8px;*/
+/*    width: 80%;*/
+/*    max-width: 90%;*/
+/*    max-height: 85vh;*/
+/*    overflow-y: auto;*/
+/*    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);*/
+/*    position: relative;*/
+/*}*/
 
-.settings-content input {
-    color: var(--color-highlight);
-    background: var(--color-background-dark-light);
-}
+/*.settings-content input {*/
+/*    color: var(--color-highlight);*/
+/*    background: var(--color-background-dark-light);*/
+/*}*/
 
-.settings-content input:focus {
-    border: 2px solid var(--color-highlight);
-}
+/*.settings-content input:focus {*/
+/*    border: 2px solid var(--color-highlight);*/
+/*}*/
 
-.settings-content code {
-    font-size: 1rem;
-    font-weight: bold;
-    color: var(--color-text-white);
-}
+/*.settings-content code {*/
+/*    font-size: 1rem;*/
+/*    font-weight: bold;*/
+/*    color: var(--color-text-white);*/
+/*}*/
 
-.close-settings {
-    color: #aaa;
-    float: right;
-    font-size: 28px;
-    font-weight: bold;
-    cursor: pointer;
-    margin-top: -10px;
-}
+/*.close-settings {*/
+/*    color: #aaa;*/
+/*    float: right;*/
+/*    font-size: 28px;*/
+/*    font-weight: bold;*/
+/*    cursor: pointer;*/
+/*    margin-top: -10px;*/
+/*}*/
 
-.close-settings:hover,
-.close-settings:focus {
-    color: black;
-    text-decoration: none;
-}
+/*.close-settings:hover,*/
+/*.close-settings:focus {*/
+/*    color: black;*/
+/*    text-decoration: none;*/
+/*}*/
 
-.settings-nav {
-    display: flex;
-    margin-bottom: 20px;
-    border-bottom: 1px solid #ddd;
-}
+/*.settings-nav {*/
+/*    display: flex;*/
+/*    margin-bottom: 20px;*/
+/*    border-bottom: 1px solid #ddd;*/
+/*}*/
 
-.settings-nav-item {
-    padding: 10px 20px;
-    cursor: pointer;
-    border-bottom: 3px solid transparent;
-}
+/*.settings-nav-item {*/
+/*    padding: 10px 20px;*/
+/*    cursor: pointer;*/
+/*    border-bottom: 3px solid transparent;*/
+/*}*/
 
-.settings-nav-item.active {
-    border-bottom: 3px solid var(--color-highlight);
-    font-weight: bold;
-}
+/*.settings-nav-item.active {*/
+/*    border-bottom: 3px solid var(--color-highlight);*/
+/*    font-weight: bold;*/
+/*}*/
 
-.settings-section {
-    display: none;
-    background-color: var(--color-background-dark);
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
+/*.settings-section {*/
+/*    display: none;*/
+/*    background-color: var(--color-background-dark);*/
+/*    padding: 20px;*/
+/*    border-radius: 8px;*/
+/*    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);*/
+/*}*/
 
-.settings-section.active {
-    display: block;
-}
+/*.settings-section.active {*/
+/*    display: block;*/
+/*}*/
 
-.settings-section .btn {
-    border: 1px solid;
-}
+/*.settings-section .btn {*/
+/*    border: 1px solid;*/
+/*}*/
 
 .btn.btn-danger {
     background: #995353;
@@ -903,4 +932,157 @@ input[type=file]::file-selector-button:hover {
 
 .text-align-left {
     text-align: left;
+}
+
+/* Settings Page Styles */
+.settings-page {
+    background-color: var(--color-background-dark);
+    color: var(--color-text-white);
+    min-height: 100vh;
+    font-family: "Fraunces", serif;
+    font-weight: normal;
+}
+
+.settings-header {
+    width: 250px;
+    background: linear-gradient(90deg, rgb(17, 17, 17) 0%, rgba(59, 59, 59, 0.49) 76%, rgba(255, 255, 255, 0) 100%);
+    flex-shrink: 0;
+    display: block;
+    margin-bottom: 0;
+    border-bottom: none;
+}
+
+.back-link {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--color-text-white);
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.back-link:hover {
+    background-color: var(--color-background-dark);
+    color: var(--color-highlight);
+}
+
+.settings-header h1 {
+    margin: 0;
+    font-size: 2rem;
+    font-weight: 300;
+    color: var(--color-highlight);
+}
+
+.settings-container {
+    display: flex;
+    height: 100vh;
+}
+
+.settings-page .settings-nav {
+    width: 250px;
+    background: linear-gradient(90deg, rgb(17, 17, 17) 0%, rgba(59, 59, 59, 0.49) 76%, rgba(255, 255, 255, 0) 100%);
+    flex-shrink: 0;
+    display: block;
+    margin-bottom: 0;
+    border-bottom: none;
+}
+
+.settings-page .settings-nav-item {
+    padding: 15px 25px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    border-bottom: none;
+    transition: all 0.2s ease;
+    color: var(--color-text-white);
+}
+
+.settings-page .settings-nav-item:hover {
+    background-color: var(--color-background-dark);
+    border-left-color: var(--color-highlight);
+}
+
+.settings-page .settings-nav-item.active {
+    border-bottom: none;
+    font-weight: bold;
+    color: var(--color-highlight);
+}
+
+.settings-content-area {
+    flex: 1;
+    padding: 30px;
+    overflow-y: auto;
+    font-family: initial;
+}
+
+.settings-page .settings-section {
+    display: none;
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
+}
+
+.settings-page .settings-section.active {
+    display: block;
+}
+
+.settings-page .settings-section input {
+    color: var(--color-highlight);
+    background: var(--color-background-dark-light);
+}
+
+.settings-page .settings-section input:focus {
+    border: 2px solid var(--color-highlight);
+}
+
+.settings-page .settings-section code {
+    font-size: 1rem;
+    font-weight: bold;
+    color: var(--color-text-white);
+}
+
+.settings-page .settings-section .btn {
+    border: 1px solid;
+}
+
+/* Mobile responsiveness for settings page */
+@media (max-width: 768px) {
+    .settings-container {
+        flex-direction: column;
+    }
+    
+    .settings-page .settings-nav {
+        width: 100%;
+        display: flex;
+        overflow-x: auto;
+        padding: 10px 0;
+        border-right: none;
+        border-bottom: 1px solid var(--color-highlight);
+    }
+    
+    .settings-page .settings-nav-item {
+        white-space: nowrap;
+        border-left: none;
+        border-bottom: 3px solid transparent;
+        padding: 18px 8px;
+    }
+    
+    .settings-page .settings-nav-item.active {
+        border-left: none;
+        border-bottom-color: var(--color-highlight);
+    }
+    
+    .settings-content-area {
+        padding: 20px;
+    }
+    
+    .settings-header {
+        padding: 15px;
+    }
+    
+    .settings-header h1 {
+        font-size: 1.5rem;
+    }
 }
