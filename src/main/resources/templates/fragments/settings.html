@@ -261,6 +261,9 @@
                 <h4 th:text="#{upload.google.new.format.title}">📱 New Format (timeline.json)</h4>
                 <p th:text="#{upload.google.new.format.instructions}">From your Android phone: Settings → Location → Location Services → Timeline → Export Timeline</p>
                 <p th:text="#{upload.google.new.format.description}">This exports a timeline.json file with your recent location data.</p>
+                <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; border-radius: 4px; padding: 10px; margin: 10px 0; color: #856404;">
+                    <strong>ℹ️ Notice:</strong> <span th:text="#{upload.google.new.format.notice}">Timeline.json files exported from Google Maps on iOS are currently not supported. These files lack the raw location data that Reitti requires for its calculations.</span>
+                </div>
             </div>
             <div style="margin: 15px 0; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
                 <h4 th:text="#{upload.google.old.format.title}">🌐 Old Format (Records.json)</h4>
@@ -325,9 +328,9 @@
     
     <!-- Data Ingestion Collapsible Section -->
     <div>
-        <details>
+        <details th:attr="open=${openSection == 'data-ingestion' ? 'open' : null}">
             <summary>
-                📱 <span th:text="#{integrations.data.ingestion.title}">Data Ingestion</span>
+                <i class="lni lni-phone"></i> <span th:text="#{integrations.data.ingestion.title}">Data Ingestion</span>
             </summary>
             <div style="padding: 15px;">
                 <p th:text="#{integrations.data.ingestion.description}" style="margin-bottom: 20px; color: var(--color-text-white);">Configure mobile apps to automatically send location data to Reitti</p>
@@ -384,16 +387,167 @@
                 </div>
             </div>
         </details>
-        <details>
+        <details th:attr="open=${openSection == 'external-data-stores' ? 'open' : null}">
             <summary>
-                📸 <span th:text="#{integrations.photos.title}">Photos</span>
+                <i class="lni lni-database-2"></i> <span th:text="#{integrations.data-stores.title}">External Data Stores</span>
+            </summary>
+            <div style="padding: 15px;">
+                <p th:text="#{integrations.data-stores.description}" style="margin-bottom: 20px; color: var(--color-text-white);">Configure Reitti to connect to external data storage like OwnTracks Recorder.</p>
+
+                <div class="integration-section">
+                    <h3 th:text="#{integrations.owntracks.recorder.title}">📊 OwnTracks Recorder Integration</h3>
+                    <p th:text="#{integrations.owntracks.recorder.description}">Connect to an OwnTracks Recorder instance to fetch location data from specific users and devices.</p>
+
+                    <div th:if="${successMessage}" class="alert alert-success" style="display: block;">
+                        <span th:text="${successMessage}">Configuration saved successfully</span>
+                    </div>
+                    <div th:if="${errorMessage}" class="alert alert-danger" style="display: block;">
+                        <span th:text="${errorMessage}">Error message</span>
+                    </div>
+
+                    <form hx-post="/settings/owntracks-recorder-integration" hx-target="#integrations" hx-swap="innerHTML" class="owntracks-recorder-form" style="margin-top: 20px;" autocomplete="off">
+                        <div class="form-group">
+                            <label for="recorderBaseUrl" th:text="#{integrations.owntracks.recorder.base.url}">Base URL</label>
+                            <input type="url"
+                                   id="recorderBaseUrl"
+                                   name="baseUrl"
+                                   required
+                                   autocomplete="off"
+                                   th:placeholder="#{integrations.owntracks.recorder.base.url.placeholder}"
+                                   th:value="${hasRecorderIntegration ? ownTracksRecorderIntegration.baseUrl : ''}">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="recorderUsername" th:text="#{integrations.owntracks.recorder.username}">Username</label>
+                            <input type="text"
+                                   id="recorderUsername"
+                                   name="username"
+                                   required
+                                   autocomplete="off"
+                                   th:placeholder="#{integrations.owntracks.recorder.username.placeholder}"
+                                   th:value="${hasRecorderIntegration ? ownTracksRecorderIntegration.username : ''}">
+                        </div>
+
+                        <div class="form-group">
+                            <label for="recorderDeviceId" th:text="#{integrations.owntracks.recorder.device.id}">Device ID</label>
+                            <input type="text"
+                                   id="recorderDeviceId"
+                                   name="deviceId"
+                                   required
+                                   autocomplete="off"
+                                   th:placeholder="#{integrations.owntracks.recorder.device.id.placeholder}"
+                                   th:value="${hasRecorderIntegration ? ownTracksRecorderIntegration.deviceId : ''}">
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                <input type="checkbox"
+                                       name="enabled"
+                                       value="true"
+                                       th:checked="${hasRecorderIntegration && ownTracksRecorderIntegration.enabled}">
+                                <span th:text="#{integrations.owntracks.recorder.enabled}">Enable Integration</span>
+                            </label>
+                        </div>
+
+                        <div style="display: flex; gap: 10px; margin-top: 20px;">
+                            <button type="submit" class="btn" th:text="#{integrations.owntracks.recorder.save}">Save Configuration</button>
+                            <button type="button"
+                                    class="btn"
+                                    id="test-recorder-connection-btn"
+                                    th:text="#{integrations.owntracks.recorder.test.connection}">Test Connection</button>
+                            <button type="button"
+                                    class="btn"
+                                    id="load-historical-btn"
+                                    th:if="${hasRecorderIntegration}"
+                                    th:attr="hx-post=@{/settings/owntracks-recorder-integration/load-historical}, hx-confirm=#{integrations.owntracks.recorder.load.historical.confirm}"
+                                    hx-target="#integrations"
+                                    hx-swap="innerHTML"
+                                    th:text="#{integrations.owntracks.recorder.load.historical}">Load Historical Data</button>
+                        </div>
+                    </form>
+
+                    <div id="recorder-connection-test-result" style="margin-top: 10px;"></div>
+
+                    <script>
+                        document.getElementById('test-recorder-connection-btn').addEventListener('click', function() {
+                            const baseUrl = document.getElementById('recorderBaseUrl').value;
+                            const username = document.getElementById('recorderUsername').value;
+                            const deviceId = document.getElementById('recorderDeviceId').value;
+                            const resultDiv = document.getElementById('recorder-connection-test-result');
+
+                            if (!baseUrl || !username || !deviceId) {
+                                resultDiv.innerHTML = '<div class="alert alert-warning" style="display: block;">Please fill in Base URL, Username, and Device ID</div>';
+                                return;
+                            }
+
+                            // Show loading state
+                            resultDiv.innerHTML = '<div style="color: var(--color-text-white);">Testing connection...</div>';
+
+                            // Make AJAX request to test connection
+                            fetch('/settings/owntracks-recorder-integration/test', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/x-www-form-urlencoded',
+                                },
+                                body: new URLSearchParams({
+                                    baseUrl: baseUrl,
+                                    username: username,
+                                    deviceId: deviceId
+                                })
+                            })
+                                .then(response => response.json())
+                                .then(data => {
+                                    if (data.success) {
+                                        resultDiv.innerHTML = '<div class="alert alert-success" style="display: block;">' + data.message + '</div>';
+                                    } else {
+                                        resultDiv.innerHTML = '<div class="alert alert-danger" style="display: block;">' + data.message + '</div>';
+                                    }
+                                })
+                                .catch(error => {
+                                    resultDiv.innerHTML = '<div class="alert alert-danger" style="display: block;">Connection test failed: ' + error.message + '</div>';
+                                });
+                        });
+
+                        // Add loading indicator for Load Historical Data button
+                        document.addEventListener('htmx:beforeRequest', function(evt) {
+                            if (evt.detail.elt.id === 'load-historical-btn') {
+                                evt.detail.elt.innerHTML = '<span style="display: inline-flex; align-items: center; gap: 8px;"><span style="width: 16px; height: 16px; border: 2px solid #ffffff; border-top: 2px solid transparent; border-radius: 50%; animation: spin 1s linear infinite;"></span>Loading Historical Data...</span>';
+                                evt.detail.elt.disabled = true;
+                            }
+                        });
+
+                        document.addEventListener('htmx:afterRequest', function(evt) {
+                            if (evt.detail.elt.id === 'load-historical-btn') {
+                                // Button will be replaced by the response, so no need to reset
+                            }
+                        });
+
+                        // Add CSS for spinner animation
+                        if (!document.querySelector('#spinner-styles')) {
+                            const style = document.createElement('style');
+                            style.id = 'spinner-styles';
+                            style.textContent = `
+                                @keyframes spin {
+                                    0% { transform: rotate(0deg); }
+                                    100% { transform: rotate(360deg); }
+                                }
+                            `;
+                            document.head.appendChild(style);
+                        }
+                    </script>
+                </div>
+            </div>
+        </details>
+        <details th:attr="open=${openSection == 'photos' ? 'open' : null}">
+            <summary>
+                <i class="lni lni-photos"></i> <span th:text="#{integrations.photos.title}">Photos</span>
             </summary>
             <div id="photos-section" hx-get="/settings/photos-content" hx-trigger="load" hx-swap="innerHTML" style="padding: 15px;">
                 <!-- Photos content will be loaded here -->
             </div>
         </details>
     </div>
-    
+
     <!-- Photos Collapsible Section -->
 
 </div>

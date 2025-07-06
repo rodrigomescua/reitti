@@ -45,6 +45,7 @@ public class SettingsController {
     private final GeocodeServiceJdbcService geocodeServiceJdbcService;
     private final RawLocationPointProcessingTrigger rawLocationPointProcessingTrigger;
     private final ImmichIntegrationService immichIntegrationService;
+    private final OwnTracksRecorderIntegrationService ownTracksRecorderIntegrationService;
     private final VisitJdbcService visitJdbcService;
     private final TripJdbcService tripJdbcService;
     private final ProcessedVisitJdbcService processedVisitJdbcService;
@@ -65,6 +66,7 @@ public class SettingsController {
                               GeocodeServiceJdbcService geocodeServiceJdbcService,
                               RawLocationPointProcessingTrigger rawLocationPointProcessingTrigger,
                               ImmichIntegrationService immichIntegrationService,
+                              OwnTracksRecorderIntegrationService ownTracksRecorderIntegrationService,
                               VisitJdbcService visitJdbcService,
                               TripJdbcService tripJdbcService,
                               ProcessedVisitJdbcService processedVisitJdbcService,
@@ -83,6 +85,7 @@ public class SettingsController {
         this.geocodeServiceJdbcService = geocodeServiceJdbcService;
         this.rawLocationPointProcessingTrigger = rawLocationPointProcessingTrigger;
         this.immichIntegrationService = immichIntegrationService;
+        this.ownTracksRecorderIntegrationService = ownTracksRecorderIntegrationService;
         this.visitJdbcService = visitJdbcService;
         this.tripJdbcService = tripJdbcService;
         this.processedVisitJdbcService = processedVisitJdbcService;
@@ -387,7 +390,8 @@ public class SettingsController {
     }
 
     @GetMapping("/integrations-content")
-    public String getIntegrationsContent(Authentication authentication, Model model, HttpServletRequest request) {
+    public String getIntegrationsContent(Authentication authentication, Model model, HttpServletRequest request,
+                                        @RequestParam(required = false) String openSection) {
         String username = authentication.getName();
         User currentUser = userJdbcService.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
@@ -416,6 +420,17 @@ public class SettingsController {
         }
 
         model.addAttribute("serverUrl", serverUrl.toString());
+
+        Optional<OwnTracksRecorderIntegration> recorderIntegration = ownTracksRecorderIntegrationService.getIntegrationForUser(currentUser);
+        if (recorderIntegration.isPresent()) {
+            model.addAttribute("ownTracksRecorderIntegration", recorderIntegration.get());
+            model.addAttribute("hasRecorderIntegration", true);
+        } else {
+            model.addAttribute("hasRecorderIntegration", false);
+        }
+
+        // Add the open section parameter
+        model.addAttribute("openSection", openSection);
 
         return "fragments/settings :: integrations-content";
     }
@@ -487,6 +502,182 @@ public class SettingsController {
         }
         
         return response;
+    }
+
+    @PostMapping("/owntracks-recorder-integration")
+    public String saveOwnTracksRecorderIntegration(@RequestParam String baseUrl,
+                                                  @RequestParam String username,
+                                                  @RequestParam String deviceId,
+                                                  @RequestParam(defaultValue = "false") boolean enabled,
+                                                  Authentication authentication,
+                                                  Model model,
+                                                  HttpServletRequest request) {
+        String currentUsername = authentication.getName();
+        User currentUser = userJdbcService.findByUsername(currentUsername)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + currentUsername));
+
+
+        List<ApiToken> tokens = apiTokenService.getTokensForUser(currentUser);
+
+        if (!tokens.isEmpty()) {
+            model.addAttribute("firstToken", tokens.getFirst().getToken());
+            model.addAttribute("hasToken", true);
+        } else {
+            model.addAttribute("hasToken", false);
+        }
+        
+        // Build the server URL
+        String scheme = request.getScheme();
+        String serverName = request.getServerName();
+        int serverPort = request.getServerPort();
+
+        StringBuilder serverUrl = new StringBuilder();
+        serverUrl.append(scheme).append("://").append(serverName);
+
+        if ((scheme.equals("http") && serverPort != 80) ||
+                (scheme.equals("https") && serverPort != 443)) {
+            serverUrl.append(":").append(serverPort);
+        }
+
+        model.addAttribute("serverUrl", serverUrl.toString());
+        
+        try {
+            OwnTracksRecorderIntegration integration = ownTracksRecorderIntegrationService.saveIntegration(
+                currentUser, baseUrl, username, deviceId, enabled);
+            
+            model.addAttribute("successMessage", getMessage("integrations.owntracks.recorder.config.saved"));
+            model.addAttribute("ownTracksRecorderIntegration", integration);
+            model.addAttribute("hasRecorderIntegration", true);
+        } catch (Exception e) {
+            model.addAttribute("errorMessage", getMessage("integrations.owntracks.recorder.config.error", e.getMessage()));
+            
+            // Re-populate form with submitted values for error case
+            OwnTracksRecorderIntegration tempIntegration = new OwnTracksRecorderIntegration(baseUrl, username, deviceId, enabled);
+            model.addAttribute("ownTracksRecorderIntegration", tempIntegration);
+            model.addAttribute("hasRecorderIntegration", true);
+        }
+        
+        // Keep external data stores section open
+        model.addAttribute("openSection", "external-data-stores");
+        
+        return "fragments/settings :: integrations-content";
+    }
+
+    @PostMapping("/owntracks-recorder-integration/test")
+    @ResponseBody
+    public Map<String, Object> testOwnTracksRecorderConnection(@RequestParam String baseUrl,
+                                                              @RequestParam String username,
+                                                              @RequestParam String deviceId) {
+        Map<String, Object> response = new HashMap<>();
+        
+        try {
+            boolean connectionSuccessful = ownTracksRecorderIntegrationService.testConnection(baseUrl, username, deviceId);
+            
+            if (connectionSuccessful) {
+                response.put("success", true);
+                response.put("message", getMessage("integrations.owntracks.recorder.connection.success"));
+            } else {
+                response.put("success", false);
+                response.put("message", getMessage("integrations.owntracks.recorder.connection.failed", "Invalid configuration"));
+            }
+        } catch (Exception e) {
+            response.put("success", false);
+            response.put("message", getMessage("integrations.owntracks.recorder.connection.failed", e.getMessage()));
+        }
+        
+        return response;
+    }
+
+    @PostMapping("/owntracks-recorder-integration/delete")
+    public String deleteOwnTracksRecorderIntegration(Authentication authentication, Model model, HttpServletRequest request) {
+        String currentUsername = authentication.getName();
+        User currentUser = userJdbcService.findByUsername(currentUsername)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + currentUsername));
+
+        try {
+            ownTracksRecorderIntegrationService.deleteIntegration(currentUser);
+            model.addAttribute("successMessage", getMessage("integrations.owntracks.recorder.config.deleted"));
+        } catch (Exception e) {
+            model.addAttribute("errorMessage", getMessage("integrations.owntracks.recorder.config.delete.error", e.getMessage()));
+        }
+
+        // Re-populate the integrations content
+        List<ApiToken> tokens = apiTokenService.getTokensForUser(currentUser);
+        if (!tokens.isEmpty()) {
+            model.addAttribute("firstToken", tokens.getFirst().getToken());
+            model.addAttribute("hasToken", true);
+        } else {
+            model.addAttribute("hasToken", false);
+        }
+
+        // Build the server URL
+        String scheme = request.getScheme();
+        String serverName = request.getServerName();
+        int serverPort = request.getServerPort();
+
+        StringBuilder serverUrl = new StringBuilder();
+        serverUrl.append(scheme).append("://").append(serverName);
+
+        if ((scheme.equals("http") && serverPort != 80) ||
+                (scheme.equals("https") && serverPort != 443)) {
+            serverUrl.append(":").append(serverPort);
+        }
+
+        model.addAttribute("serverUrl", serverUrl.toString());
+        model.addAttribute("hasRecorderIntegration", false);
+
+        return "fragments/settings :: integrations-content";
+    }
+
+    @PostMapping("/owntracks-recorder-integration/load-historical")
+    public String loadOwnTracksRecorderHistoricalData(Authentication authentication, Model model, HttpServletRequest request) {
+        String currentUsername = authentication.getName();
+        User currentUser = userJdbcService.findByUsername(currentUsername)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + currentUsername));
+
+        try {
+            ownTracksRecorderIntegrationService.loadHistoricalData(currentUser);
+            model.addAttribute("successMessage", getMessage("integrations.owntracks.recorder.load.historical.success"));
+        } catch (Exception e) {
+            model.addAttribute("errorMessage", getMessage("integrations.owntracks.recorder.load.historical.error", e.getMessage()));
+        }
+
+        // Re-populate the integrations content
+        List<ApiToken> tokens = apiTokenService.getTokensForUser(currentUser);
+        if (!tokens.isEmpty()) {
+            model.addAttribute("firstToken", tokens.getFirst().getToken());
+            model.addAttribute("hasToken", true);
+        } else {
+            model.addAttribute("hasToken", false);
+        }
+
+        // Build the server URL
+        String scheme = request.getScheme();
+        String serverName = request.getServerName();
+        int serverPort = request.getServerPort();
+
+        StringBuilder serverUrl = new StringBuilder();
+        serverUrl.append(scheme).append("://").append(serverName);
+
+        if ((scheme.equals("http") && serverPort != 80) ||
+                (scheme.equals("https") && serverPort != 443)) {
+            serverUrl.append(":").append(serverPort);
+        }
+
+        model.addAttribute("serverUrl", serverUrl.toString());
+
+        Optional<OwnTracksRecorderIntegration> recorderIntegration = ownTracksRecorderIntegrationService.getIntegrationForUser(currentUser);
+        if (recorderIntegration.isPresent()) {
+            model.addAttribute("ownTracksRecorderIntegration", recorderIntegration.get());
+            model.addAttribute("hasRecorderIntegration", true);
+        } else {
+            model.addAttribute("hasRecorderIntegration", false);
+        }
+
+        // Keep external data stores section open
+        model.addAttribute("openSection", "external-data-stores");
+
+        return "fragments/settings :: integrations-content";
     }
 
     @GetMapping("/user-form")
