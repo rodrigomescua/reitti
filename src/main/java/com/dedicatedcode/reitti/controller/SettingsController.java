@@ -365,7 +365,7 @@ public class SettingsController {
 
     @GetMapping("/file-upload-content")
     public String getDataImportContent() {
-        return "fragments/settings :: file-upload-content";
+        return "fragments/file-upload :: file-upload-content";
     }
 
     @GetMapping("/language-content")
@@ -424,7 +424,7 @@ public class SettingsController {
         Optional<OwnTracksRecorderIntegration> recorderIntegration = ownTracksRecorderIntegrationService.getIntegrationForUser(currentUser);
         if (recorderIntegration.isPresent()) {
             model.addAttribute("ownTracksRecorderIntegration", recorderIntegration.get());
-            model.addAttribute("hasRecorderIntegration", true);
+            model.addAttribute("hasRecorderIntegration", recorderIntegration.get().isEnabled());
         } else {
             model.addAttribute("hasRecorderIntegration", false);
         }
@@ -547,14 +547,14 @@ public class SettingsController {
             
             model.addAttribute("successMessage", getMessage("integrations.owntracks.recorder.config.saved"));
             model.addAttribute("ownTracksRecorderIntegration", integration);
-            model.addAttribute("hasRecorderIntegration", true);
+            model.addAttribute("hasRecorderIntegration", enabled);
         } catch (Exception e) {
             model.addAttribute("errorMessage", getMessage("integrations.owntracks.recorder.config.error", e.getMessage()));
             
             // Re-populate form with submitted values for error case
             OwnTracksRecorderIntegration tempIntegration = new OwnTracksRecorderIntegration(baseUrl, username, deviceId, enabled);
             model.addAttribute("ownTracksRecorderIntegration", tempIntegration);
-            model.addAttribute("hasRecorderIntegration", true);
+            model.addAttribute("hasRecorderIntegration", enabled);
         }
         
         // Keep external data stores section open
@@ -669,7 +669,7 @@ public class SettingsController {
         Optional<OwnTracksRecorderIntegration> recorderIntegration = ownTracksRecorderIntegrationService.getIntegrationForUser(currentUser);
         if (recorderIntegration.isPresent()) {
             model.addAttribute("ownTracksRecorderIntegration", recorderIntegration.get());
-            model.addAttribute("hasRecorderIntegration", true);
+            model.addAttribute("hasRecorderIntegration", recorderIntegration.get().isEnabled());
         } else {
             model.addAttribute("hasRecorderIntegration", false);
         }
@@ -701,7 +701,7 @@ public class SettingsController {
 
         if (files.length == 0) {
             model.addAttribute("uploadErrorMessage", "No files selected");
-            return "fragments/settings :: file-upload-content";
+            return "fragments/file-upload :: file-upload-content";
         }
 
         int totalProcessed = 0;
@@ -752,11 +752,50 @@ public class SettingsController {
             model.addAttribute("uploadErrorMessage", "No files were processed successfully. " + errorMessages);
         }
 
-        return "fragments/settings :: file-upload-content";
+        return "fragments/file-upload :: file-upload-content";
     }
 
-    @PostMapping("/import/google-takeout")
-    public String importGoogleTakeout(@RequestParam("file") MultipartFile file,
+    @PostMapping("/import/google-records")
+    public String importGoogleRecords(@RequestParam("file") MultipartFile file,
+                                     Authentication authentication,
+                                     Model model) {
+        User user = (User) authentication.getPrincipal();
+
+        if (file.isEmpty() || file.getOriginalFilename() == null) {
+            model.addAttribute("uploadErrorMessage", "File is empty");
+            return "fragments/file-upload :: file-upload-content";
+        }
+
+        if (!file.getOriginalFilename().endsWith(".json")) {
+            model.addAttribute("uploadErrorMessage", "Only JSON files are supported");
+            return "fragments/file-upload :: file-upload-content";
+        }
+
+        try (InputStream inputStream = file.getInputStream()) {
+            Map<String, Object> result = importHandler.importGoogleRecords(inputStream, user);
+
+            if ((Boolean) result.get("success")) {
+                model.addAttribute("uploadSuccessMessage", result.get("message"));
+                
+                // Trigger processing pipeline for imported data
+                try {
+                    rawLocationPointProcessingTrigger.start();
+                } catch (Exception e) {
+                    logger.warn("Failed to trigger processing pipeline after Google Records import", e);
+                }
+            } else {
+                model.addAttribute("uploadErrorMessage", result.get("error"));
+            }
+
+            return "fragments/file-upload :: file-upload-content";
+        } catch (IOException e) {
+            model.addAttribute("uploadErrorMessage", "Error processing file: " + e.getMessage());
+            return "fragments/file-upload :: file-upload-content";
+        }
+    }
+
+    @PostMapping("/import/google-timeline")
+    public String importGoogleTimeline(@RequestParam("file") MultipartFile file,
                                       Authentication authentication,
                                       Model model) {
         User user = (User) authentication.getPrincipal();
@@ -768,11 +807,11 @@ public class SettingsController {
 
         if (!file.getOriginalFilename().endsWith(".json")) {
             model.addAttribute("uploadErrorMessage", "Only JSON files are supported");
-            return "fragments/settings :: file-upload-content";
+            return "fragments/file-upload :: file-upload-content";
         }
 
         try (InputStream inputStream = file.getInputStream()) {
-            Map<String, Object> result = importHandler.importGoogleTakeout(inputStream, user);
+            Map<String, Object> result = importHandler.importGoogleTimeline(inputStream, user);
 
             if ((Boolean) result.get("success")) {
                 model.addAttribute("uploadSuccessMessage", result.get("message"));
@@ -781,16 +820,16 @@ public class SettingsController {
                 try {
                     rawLocationPointProcessingTrigger.start();
                 } catch (Exception e) {
-                    logger.warn("Failed to trigger processing pipeline after Google Takeout import", e);
+                    logger.warn("Failed to trigger processing pipeline after Google Timeline import", e);
                 }
             } else {
                 model.addAttribute("uploadErrorMessage", result.get("error"));
             }
 
-            return "fragments/settings :: file-upload-content";
+            return "fragments/file-upload :: file-upload-content";
         } catch (IOException e) {
             model.addAttribute("uploadErrorMessage", "Error processing file: " + e.getMessage());
-            return "fragments/settings :: file-upload-content";
+            return "fragments/file-upload :: file-upload-content";
         }
     }
 
@@ -854,7 +893,7 @@ public class SettingsController {
             model.addAttribute("uploadErrorMessage", "No files were processed successfully. " + errorMessages);
         }
 
-        return "fragments/settings :: file-upload-content";
+        return "fragments/file-upload :: file-upload-content";
     }
 
     @GetMapping("/manage-data-content")
