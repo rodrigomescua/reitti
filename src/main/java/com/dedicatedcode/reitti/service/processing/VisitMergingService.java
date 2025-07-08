@@ -64,20 +64,21 @@ public class VisitMergingService {
     }
 
     public void visitUpdated(VisitUpdatedEvent event) {
-        handleEvent(event.getUsername(), event.getVisitIds());
+        String username = event.getUsername();
+        handleEvent(username, event.getVisitIds());
     }
 
     private void handleEvent(String username, List<Long> visitIds) {
-            Optional<User> user = userJdbcService.findByUsername(username);
-            if (user.isEmpty()) {
-                logger.warn("User not found for userName: {}", username);
-                return;
-            }
-            List<Visit> visits = this.visitJdbcService.findAllByIds(visitIds);
-            if (visits.isEmpty()) {
-                logger.debug("Visit not found for visitId: [{}]", visitIds);
-                return;
-            }
+        Optional<User> user = userJdbcService.findByUsername(username);
+        if (user.isEmpty()) {
+            logger.warn("User not found for userName: {}", username);
+            return;
+        }
+        List<Visit> visits = this.visitJdbcService.findAllByIds(visitIds);
+        if (visits.isEmpty()) {
+            logger.debug("Visit not found for visitId: [{}]", visitIds);
+            return;
+        }
 
         Instant searchStart = visits.stream().min(Comparator.comparing(Visit::getStartTime)).map(Visit::getStartTime).map(instant -> instant.minus(searchRangeExtensionInHours, ChronoUnit.HOURS)).orElseThrow();
         Instant searchEnd = visits.stream().max(Comparator.comparing(Visit::getEndTime)).map(Visit::getEndTime).map(instant -> instant.plus(searchRangeExtensionInHours, ChronoUnit.HOURS)).orElseThrow();

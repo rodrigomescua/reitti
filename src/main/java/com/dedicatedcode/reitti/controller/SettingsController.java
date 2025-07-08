@@ -22,7 +22,6 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.LocaleResolver;
 
@@ -35,15 +34,14 @@ import java.util.stream.Collectors;
 @Controller
 @RequestMapping("/settings")
 public class SettingsController {
+    private static final Logger logger = LoggerFactory.getLogger(SettingsController.class);
 
     private final ApiTokenService apiTokenService;
     private final UserJdbcService userJdbcService;
     private final QueueStatsService queueStatsService;
     private final PlaceService placeService;
     private final SignificantPlaceJdbcService placeJdbcService;
-    private final ImportHandler importHandler;
     private final GeocodeServiceJdbcService geocodeServiceJdbcService;
-    private final RawLocationPointProcessingTrigger rawLocationPointProcessingTrigger;
     private final ImmichIntegrationService immichIntegrationService;
     private final OwnTracksRecorderIntegrationService ownTracksRecorderIntegrationService;
     private final VisitJdbcService visitJdbcService;
@@ -56,15 +54,13 @@ public class SettingsController {
     private final MessageSource messageSource;
     private final LocaleResolver localeResolver;
     private final Properties gitProperties = new Properties();
-    private static final Logger logger = LoggerFactory.getLogger(SettingsController.class);
+    private final RawLocationPointProcessingTrigger rawLocationPointProcessingTrigger;
 
     public SettingsController(ApiTokenService apiTokenService,
                               UserJdbcService userJdbcService,
                               QueueStatsService queueStatsService,
                               PlaceService placeService, SignificantPlaceJdbcService placeJdbcService,
-                              ImportHandler importHandler,
                               GeocodeServiceJdbcService geocodeServiceJdbcService,
-                              RawLocationPointProcessingTrigger rawLocationPointProcessingTrigger,
                               ImmichIntegrationService immichIntegrationService,
                               OwnTracksRecorderIntegrationService ownTracksRecorderIntegrationService,
                               VisitJdbcService visitJdbcService,
@@ -75,15 +71,14 @@ public class SettingsController {
                               @Value("${reitti.geocoding.max-errors}") int maxErrors,
                               @Value("${reitti.data-management.enabled:false}") boolean dataManagementEnabled,
                               MessageSource messageSource,
-                              LocaleResolver localeResolver) {
+                              LocaleResolver localeResolver,
+                              RawLocationPointProcessingTrigger rawLocationPointProcessingTrigger) {
         this.apiTokenService = apiTokenService;
         this.userJdbcService = userJdbcService;
         this.queueStatsService = queueStatsService;
         this.placeService = placeService;
         this.placeJdbcService = placeJdbcService;
-        this.importHandler = importHandler;
         this.geocodeServiceJdbcService = geocodeServiceJdbcService;
-        this.rawLocationPointProcessingTrigger = rawLocationPointProcessingTrigger;
         this.immichIntegrationService = immichIntegrationService;
         this.ownTracksRecorderIntegrationService = ownTracksRecorderIntegrationService;
         this.visitJdbcService = visitJdbcService;
@@ -95,6 +90,7 @@ public class SettingsController {
         this.dataManagementEnabled = dataManagementEnabled;
         this.messageSource = messageSource;
         this.localeResolver = localeResolver;
+        this.rawLocationPointProcessingTrigger = rawLocationPointProcessingTrigger;
         loadGitProperties();
     }
 
@@ -365,7 +361,7 @@ public class SettingsController {
 
     @GetMapping("/file-upload-content")
     public String getDataImportContent() {
-        return "fragments/file-upload :: file-upload-content";
+        return "redirect:/import/file-upload-content";
     }
 
     @GetMapping("/language-content")
@@ -693,209 +689,6 @@ public class SettingsController {
         return "fragments/settings :: user-form";
     }
 
-    @PostMapping("/import/gpx")
-    public String importGpx(@RequestParam("files") MultipartFile[] files,
-                            Authentication authentication,
-                            Model model) {
-        User user = (User) authentication.getPrincipal();
-
-        if (files.length == 0) {
-            model.addAttribute("uploadErrorMessage", "No files selected");
-            return "fragments/file-upload :: file-upload-content";
-        }
-
-        int totalProcessed = 0;
-        int successCount = 0;
-        StringBuilder errorMessages = new StringBuilder();
-
-        for (MultipartFile file : files) {
-            if (file.isEmpty() || file.getOriginalFilename() == null) {
-                errorMessages.append("File ").append(file.getOriginalFilename()).append(" is empty. ");
-                continue;
-            }
-
-            if (!file.getOriginalFilename().endsWith(".gpx")) {
-                errorMessages.append("File ").append(file.getOriginalFilename()).append(" is not a GPX file. ");
-                continue;
-            }
-
-            try (InputStream inputStream = file.getInputStream()) {
-                Map<String, Object> result = importHandler.importGpx(inputStream, user);
-
-                if ((Boolean) result.get("success")) {
-                    totalProcessed += (Integer) result.get("pointsReceived");
-                    successCount++;
-                } else {
-                    errorMessages.append("Error processing ").append(file.getOriginalFilename()).append(": ")
-                            .append(result.get("error")).append(". ");
-                }
-            } catch (IOException e) {
-                errorMessages.append("Error processing ").append(file.getOriginalFilename()).append(": ")
-                        .append(e.getMessage()).append(". ");
-            }
-        }
-
-        if (successCount > 0) {
-            String message = "Successfully processed " + successCount + " file(s) with " + totalProcessed + " location points";
-            if (!errorMessages.isEmpty()) {
-                message += ". Errors: " + errorMessages;
-            }
-            model.addAttribute("uploadSuccessMessage", message);
-            
-            // Trigger processing pipeline for imported data
-            try {
-                rawLocationPointProcessingTrigger.start();
-            } catch (Exception e) {
-                logger.warn("Failed to trigger processing pipeline after GPX import", e);
-            }
-        } else {
-            model.addAttribute("uploadErrorMessage", "No files were processed successfully. " + errorMessages);
-        }
-
-        return "fragments/file-upload :: file-upload-content";
-    }
-
-    @PostMapping("/import/google-records")
-    public String importGoogleRecords(@RequestParam("file") MultipartFile file,
-                                     Authentication authentication,
-                                     Model model) {
-        User user = (User) authentication.getPrincipal();
-
-        if (file.isEmpty() || file.getOriginalFilename() == null) {
-            model.addAttribute("uploadErrorMessage", "File is empty");
-            return "fragments/file-upload :: file-upload-content";
-        }
-
-        if (!file.getOriginalFilename().endsWith(".json")) {
-            model.addAttribute("uploadErrorMessage", "Only JSON files are supported");
-            return "fragments/file-upload :: file-upload-content";
-        }
-
-        try (InputStream inputStream = file.getInputStream()) {
-            Map<String, Object> result = importHandler.importGoogleRecords(inputStream, user);
-
-            if ((Boolean) result.get("success")) {
-                model.addAttribute("uploadSuccessMessage", result.get("message"));
-                
-                // Trigger processing pipeline for imported data
-                try {
-                    rawLocationPointProcessingTrigger.start();
-                } catch (Exception e) {
-                    logger.warn("Failed to trigger processing pipeline after Google Records import", e);
-                }
-            } else {
-                model.addAttribute("uploadErrorMessage", result.get("error"));
-            }
-
-            return "fragments/file-upload :: file-upload-content";
-        } catch (IOException e) {
-            model.addAttribute("uploadErrorMessage", "Error processing file: " + e.getMessage());
-            return "fragments/file-upload :: file-upload-content";
-        }
-    }
-
-    @PostMapping("/import/google-timeline")
-    public String importGoogleTimeline(@RequestParam("file") MultipartFile file,
-                                      Authentication authentication,
-                                      Model model) {
-        User user = (User) authentication.getPrincipal();
-
-        if (file.isEmpty() || file.getOriginalFilename() == null) {
-            model.addAttribute("uploadErrorMessage", "File is empty");
-            return "fragments/settings :: file-upload-content";
-        }
-
-        if (!file.getOriginalFilename().endsWith(".json")) {
-            model.addAttribute("uploadErrorMessage", "Only JSON files are supported");
-            return "fragments/file-upload :: file-upload-content";
-        }
-
-        try (InputStream inputStream = file.getInputStream()) {
-            Map<String, Object> result = importHandler.importGoogleTimeline(inputStream, user);
-
-            if ((Boolean) result.get("success")) {
-                model.addAttribute("uploadSuccessMessage", result.get("message"));
-                
-                // Trigger processing pipeline for imported data
-                try {
-                    rawLocationPointProcessingTrigger.start();
-                } catch (Exception e) {
-                    logger.warn("Failed to trigger processing pipeline after Google Timeline import", e);
-                }
-            } else {
-                model.addAttribute("uploadErrorMessage", result.get("error"));
-            }
-
-            return "fragments/file-upload :: file-upload-content";
-        } catch (IOException e) {
-            model.addAttribute("uploadErrorMessage", "Error processing file: " + e.getMessage());
-            return "fragments/file-upload :: file-upload-content";
-        }
-    }
-
-    @PostMapping("/import/geojson")
-    public String importGeoJson(@RequestParam("files") MultipartFile[] files,
-                                Authentication authentication,
-                                Model model) {
-        User user = (User) authentication.getPrincipal();
-
-        if (files.length == 0) {
-            model.addAttribute("uploadErrorMessage", "No files selected");
-            return "fragments/settings :: file-upload-content";
-        }
-
-        int totalProcessed = 0;
-        int successCount = 0;
-        StringBuilder errorMessages = new StringBuilder();
-
-        for (MultipartFile file : files) {
-            if (file.isEmpty()) {
-                errorMessages.append("File ").append(file.getOriginalFilename()).append(" is empty. ");
-                continue;
-            }
-
-            String filename = file.getOriginalFilename();
-            if (filename == null || (!filename.endsWith(".geojson") && !filename.endsWith(".json"))) {
-                errorMessages.append("File ").append(filename).append(" is not a GeoJSON file. ");
-                continue;
-            }
-
-            try (InputStream inputStream = file.getInputStream()) {
-                Map<String, Object> result = importHandler.importGeoJson(inputStream, user);
-
-                if ((Boolean) result.get("success")) {
-                    totalProcessed += (Integer) result.get("pointsReceived");
-                    successCount++;
-                } else {
-                    errorMessages.append("Error processing ").append(filename).append(": ")
-                            .append(result.get("error")).append(". ");
-                }
-            } catch (IOException e) {
-                errorMessages.append("Error processing ").append(filename).append(": ")
-                        .append(e.getMessage()).append(". ");
-            }
-        }
-
-        if (successCount > 0) {
-            String message = "Successfully processed " + successCount + " file(s) with " + totalProcessed + " location points";
-            if (!errorMessages.isEmpty()) {
-                message += ". Errors: " + errorMessages;
-            }
-            model.addAttribute("uploadSuccessMessage", message);
-            
-            // Trigger processing pipeline for imported data
-            try {
-                rawLocationPointProcessingTrigger.start();
-            } catch (Exception e) {
-                logger.warn("Failed to trigger processing pipeline after GeoJSON import", e);
-            }
-        } else {
-            model.addAttribute("uploadErrorMessage", "No files were processed successfully. " + errorMessages);
-        }
-
-        return "fragments/file-upload :: file-upload-content";
-    }
-
     @GetMapping("/manage-data-content")
     public String getManageDataContent(Model model) {
         if (!dataManagementEnabled) {
@@ -939,7 +732,6 @@ public class SettingsController {
             // Mark all raw location points as unprocessed
             markRawLocationPointsAsUnprocessed(currentUser);
             
-            // Trigger processing pipeline
             rawLocationPointProcessingTrigger.start();
             
             model.addAttribute("successMessage", getMessage("data.clear.reprocess.success"));
@@ -961,7 +753,6 @@ public class SettingsController {
             User currentUser = userJdbcService.findByUsername(username)
                     .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
             
-            // Remove all data except SignificantPlaces
             removeAllDataExceptPlaces(currentUser);
             
             model.addAttribute("successMessage", getMessage("data.remove.all.success"));
@@ -973,21 +764,16 @@ public class SettingsController {
     }
 
     private void clearProcessedDataExceptPlaces(User user) {
-        // Clear all processed data except SignificantPlaces
-        // Order matters due to foreign key constraints
         tripJdbcService.deleteAllForUser(user);
         processedVisitJdbcService.deleteAllForUser(user);
         visitJdbcService.deleteAllForUser(user);
     }
 
     private void markRawLocationPointsAsUnprocessed(User user) {
-        // Mark all raw location points for the user as unprocessed
         rawLocationPointJdbcService.markAllAsUnprocessedForUser(user);
     }
 
     private void removeAllDataExceptPlaces(User user) {
-        // Remove all data except SignificantPlaces
-        // Order matters due to foreign key constraints
         tripJdbcService.deleteAllForUser(user);
         processedVisitJdbcService.deleteAllForUser(user);
         visitJdbcService.deleteAllForUser(user);

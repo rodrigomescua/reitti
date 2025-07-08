@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,8 +54,6 @@ public class TripDetectionService {
                 Instant searchEnd = visit.getEndTime().plus(1, ChronoUnit.DAYS);
 
                 List<ProcessedVisit> visits = this.processedVisitJdbcService.findByUserAndTimeOverlap(user, searchStart, searchEnd);
-
-                visits.sort(Comparator.comparing(ProcessedVisit::getStartTime));
 
                 if (visits.size() < 2) {
                     logger.info("Not enough visits to detect trips for user: {}", user.getUsername());

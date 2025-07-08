@@ -66,68 +66,68 @@ public class VisitDetectionService {
         try {
             logger.debug("Detecting stay points for user {} from {} to {} ", username, incoming.getEarliest(), incoming.getLatest());
             User user = userJdbcService.findByUsername(username).orElseThrow();
-        // We extend the search window slightly to catch visits spanning midnight
-        Instant windowStart = incoming.getEarliest().minus(5, ChronoUnit.MINUTES);
-        // Get points from 1 day after the latest new point
-        Instant windowEnd = incoming.getLatest().plus(5, ChronoUnit.MINUTES);
+            // We extend the search window slightly to catch visits spanning midnight
+            Instant windowStart = incoming.getEarliest().minus(5, ChronoUnit.MINUTES);
+            // Get points from 1 day after the latest new point
+            Instant windowEnd = incoming.getLatest().plus(5, ChronoUnit.MINUTES);
 
-        /*
-        -----+++++----------+++++------+++++++---+++----------------++++++++-----------------------------------------------
-        ----------------------#-------------------#------------------------------------------------------------------------
-        --------------------++#++------+++++++---+#+-----------------------------------------------------------------------
-         */
-        List<Visit> affectedVisits = this.visitJdbcService.findByUserAndTimeAfterAndStartTimeBefore(user, windowStart, windowEnd);
-        if (logger.isDebugEnabled()) {
-            logger.debug("Found [{}] visits which touch the timerange from [{}] to [{}]", affectedVisits.size(), windowStart, windowEnd);
-            affectedVisits.forEach(visit -> logger.debug("Visit [{}] from [{}] to [{}] at [{},{}]", visit.getId(), visit.getStartTime(), visit.getEndTime(), visit.getLongitude(), visit.getLatitude()));
+            /*
+            -----+++++----------+++++------+++++++---+++----------------++++++++-----------------------------------------------
+            ----------------------#-------------------#------------------------------------------------------------------------
+            --------------------++#++------+++++++---+#+-----------------------------------------------------------------------
+             */
+            List<Visit> affectedVisits = this.visitJdbcService.findByUserAndTimeAfterAndStartTimeBefore(user, windowStart, windowEnd);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Found [{}] visits which touch the timerange from [{}] to [{}]", affectedVisits.size(), windowStart, windowEnd);
+                affectedVisits.forEach(visit -> logger.debug("Visit [{}] from [{}] to [{}] at [{},{}]", visit.getId(), visit.getStartTime(), visit.getEndTime(), visit.getLongitude(), visit.getLatitude()));
 
-        }
-        try {
-            this.visitJdbcService.delete(affectedVisits);
-            logger.debug("Deleted [{}] visits with ids [{}]", affectedVisits.size(), affectedVisits.stream().map(Visit::getId).map(Object::toString).collect(Collectors.joining()));
-        } catch (OptimisticLockException e) {
-            logger.error("Optimistic lock exception", e);
-            throw new RuntimeException(e);
-        }
-
-        if (!affectedVisits.isEmpty()) {
-            if (affectedVisits.getFirst().getStartTime().isBefore(windowStart)) {
-                windowStart = affectedVisits.getFirst().getStartTime();
+            }
+            try {
+                this.visitJdbcService.delete(affectedVisits);
+                logger.debug("Deleted [{}] visits with ids [{}]", affectedVisits.size(), affectedVisits.stream().map(Visit::getId).map(Object::toString).collect(Collectors.joining()));
+            } catch (OptimisticLockException e) {
+                logger.error("Optimistic lock exception", e);
+                throw new RuntimeException(e);
             }
 
-            if (affectedVisits.getLast().getEndTime().isAfter(windowEnd)) {
-                windowEnd = affectedVisits.getLast().getEndTime();
+            if (!affectedVisits.isEmpty()) {
+                if (affectedVisits.getFirst().getStartTime().isBefore(windowStart)) {
+                    windowStart = affectedVisits.getFirst().getStartTime();
+                }
+
+                if (affectedVisits.getLast().getEndTime().isAfter(windowEnd)) {
+                    windowEnd = affectedVisits.getLast().getEndTime();
+                }
             }
-        }
-        logger.debug("Searching for points in the timerange from [{}] to [{}]", windowStart, windowEnd);
+            logger.debug("Searching for points in the timerange from [{}] to [{}]", windowStart, windowEnd);
 
-        double baseLatitude = affectedVisits.isEmpty() ? 50 : affectedVisits.getFirst().getLatitude();
-        double[] metersAsDegrees = GeoUtils.metersToDegreesAtPosition(distanceThreshold, baseLatitude);
-        List<RawLocationPointJdbcService.ClusteredPoint> clusteredPointsInTimeRangeForUser = this.rawLocationPointJdbcService.findClusteredPointsInTimeRangeForUser(user, windowStart, windowEnd, minPointsInCluster, metersAsDegrees[0]);
-        Map<Integer, List<RawLocationPoint>> clusteredByLocation = new HashMap<>();
-        for (RawLocationPointJdbcService.ClusteredPoint clusteredPoint : clusteredPointsInTimeRangeForUser) {
-            if (clusteredPoint.getClusterId() != null) {
-                clusteredByLocation.computeIfAbsent(clusteredPoint.getClusterId(), _ -> new ArrayList<>()).add(clusteredPoint.getPoint());
+            double baseLatitude = affectedVisits.isEmpty() ? 50 : affectedVisits.getFirst().getLatitude();
+            double[] metersAsDegrees = GeoUtils.metersToDegreesAtPosition(distanceThreshold, baseLatitude);
+            List<RawLocationPointJdbcService.ClusteredPoint> clusteredPointsInTimeRangeForUser = this.rawLocationPointJdbcService.findClusteredPointsInTimeRangeForUser(user, windowStart, windowEnd, minPointsInCluster, metersAsDegrees[0]);
+            Map<Integer, List<RawLocationPoint>> clusteredByLocation = new HashMap<>();
+            for (RawLocationPointJdbcService.ClusteredPoint clusteredPoint : clusteredPointsInTimeRangeForUser) {
+                if (clusteredPoint.getClusterId() != null) {
+                    clusteredByLocation.computeIfAbsent(clusteredPoint.getClusterId(), _ -> new ArrayList<>()).add(clusteredPoint.getPoint());
+                }
             }
-        }
 
-        logger.debug("Found {} point clusters in the processing window from [{}] to [{}]", clusteredByLocation.size(), windowStart, windowEnd);
+            logger.debug("Found {} point clusters in the processing window from [{}] to [{}]", clusteredByLocation.size(), windowStart, windowEnd);
 
-        // Apply the stay point detection algorithm
-        List<StayPoint> stayPoints = detectStayPointsFromTrajectory(clusteredByLocation);
+            // Apply the stay point detection algorithm
+            List<StayPoint> stayPoints = detectStayPointsFromTrajectory(clusteredByLocation);
 
-        logger.info("Detected {} stay points for user {}", stayPoints.size(), user.getUsername());
+            logger.info("Detected {} stay points for user {}", stayPoints.size(), user.getUsername());
 
-        List<Visit> createdVisits = new ArrayList<>();
+            List<Visit> createdVisits = new ArrayList<>();
 
-        for (StayPoint stayPoint : stayPoints) {
-                Visit visit = createVisit(stayPoint.getLongitude(), stayPoint.getLatitude(), stayPoint);
-                logger.debug("Creating new visit: {}", visit);
-                createdVisits.add(visit);
-        }
+            for (StayPoint stayPoint : stayPoints) {
+                    Visit visit = createVisit(stayPoint.getLongitude(), stayPoint.getLatitude(), stayPoint);
+                    logger.debug("Creating new visit: {}", visit);
+                    createdVisits.add(visit);
+            }
 
-        List<Long> createdIds = visitJdbcService.bulkInsert(user, createdVisits).stream().map(Visit::getId).toList();
-        rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.MERGE_VISIT_ROUTING_KEY, new VisitUpdatedEvent(user.getUsername(), createdIds));
+            List<Long> createdIds = visitJdbcService.bulkInsert(user, createdVisits).stream().map(Visit::getId).toList();
+            rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.MERGE_VISIT_ROUTING_KEY, new VisitUpdatedEvent(user.getUsername(), createdIds));
         } finally {
             userLock.unlock();
         }
