@@ -438,7 +438,6 @@ class HorizontalDatePicker {
         if (!this.options.allowFutureDates) {
             const today = new Date();
             today.setHours(23, 59, 59, 59);
-            
             if (dateToSelect > today) {
                 return; // Don't select future dates if not allowed
             }
@@ -608,7 +607,11 @@ class HorizontalDatePicker {
     }
     
     parseDate(dateString) {
-        return new Date(dateString);
+        const parts = dateString.split('-');
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+        const day = parseInt(parts[2], 10);
+        return new Date(year, month, day);
     }
     
     getDayName(date) {
