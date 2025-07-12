@@ -6,8 +6,12 @@ import com.dedicatedcode.reitti.model.User;
 import com.dedicatedcode.reitti.model.UserSettings;
 import com.dedicatedcode.reitti.repository.UserJdbcService;
 import com.dedicatedcode.reitti.repository.UserSettingsJdbcService;
+import com.dedicatedcode.reitti.service.AvatarService;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -18,13 +22,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.LocaleResolver;
 
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
+import java.util.*;
 
 @Controller
 @RequestMapping("/settings")
@@ -34,6 +33,7 @@ public class UserSettingsController {
     private final UserSettingsJdbcService userSettingsJdbcService;
     private final MessageSource messageSource;
     private final LocaleResolver localeResolver;
+    private final AvatarService avatarService;
     private final JdbcTemplate jdbcTemplate;
 
     // Avatar constraints
@@ -41,13 +41,21 @@ public class UserSettingsController {
     private static final String[] ALLOWED_CONTENT_TYPES = {
         "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp"
     };
+    private static final List<String> DEFAULT_AVATARS = Arrays.asList(
+        "avatar_man.jpg", "avatar_woman.jpg", "avatar_boy.jpg", "avatar_girl.jpg"
+    );
 
-    public UserSettingsController(UserJdbcService userJdbcService, UserSettingsJdbcService userSettingsJdbcService, 
-                                 MessageSource messageSource, LocaleResolver localeResolver, JdbcTemplate jdbcTemplate) {
+    public UserSettingsController(UserJdbcService userJdbcService,
+                                  UserSettingsJdbcService userSettingsJdbcService,
+                                  MessageSource messageSource,
+                                  LocaleResolver localeResolver,
+                                  AvatarService avatarService,
+                                  JdbcTemplate jdbcTemplate) {
         this.userJdbcService = userJdbcService;
         this.userSettingsJdbcService = userSettingsJdbcService;
         this.messageSource = messageSource;
         this.localeResolver = localeResolver;
+        this.avatarService = avatarService;
         this.jdbcTemplate = jdbcTemplate;
     }
 
@@ -101,6 +109,7 @@ public class UserSettingsController {
                              @RequestParam(required = false) List<Long> connectedUserIds,
                              @RequestParam(required = false) List<String> connectedUserColors,
                              @RequestParam(required = false) MultipartFile avatar,
+                             @RequestParam(required = false) String defaultAvatar,
                              Authentication authentication,
                              Model model) {
         try {
@@ -115,8 +124,12 @@ public class UserSettingsController {
                 UserSettings userSettings = new UserSettings(createdUser.getId(), preferColoredMap, preferred_language, connectedAccounts, unitSystem);
                 userSettingsJdbcService.save(userSettings);
                 
-                // Handle avatar upload
-                handleAvatarUpload(avatar, createdUser.getId(), model);
+                // Handle avatar - prioritize custom upload over default
+                if (avatar != null && !avatar.isEmpty()) {
+                    handleAvatarUpload(avatar, createdUser.getId(), model);
+                } else if (StringUtils.hasText(defaultAvatar)) {
+                    handleDefaultAvatarSelection(defaultAvatar, createdUser.getId(), model);
+                }
                 
                 model.addAttribute("successMessage", getMessage("message.success.user.created"));
             } else {
@@ -145,6 +158,7 @@ public class UserSettingsController {
                              @RequestParam(required = false) List<Long> connectedUserIds,
                              @RequestParam(required = false) List<String> connectedUserColors,
                              @RequestParam(required = false) MultipartFile avatar,
+                             @RequestParam(required = false) String defaultAvatar,
                              @RequestParam(required = false) String removeAvatar,
                              Authentication authentication,
                              HttpServletRequest request,
@@ -171,9 +185,11 @@ public class UserSettingsController {
             
             // Handle avatar operations
             if ("true".equals(removeAvatar)) {
-                deleteAvatar(userId);
-            } else {
+                avatarService.deleteAvatar(userId);
+            } else if (avatar != null && !avatar.isEmpty()) {
                 handleAvatarUpload(avatar, userId, model);
+            } else if (StringUtils.hasText(defaultAvatar)) {
+                handleDefaultAvatarSelection(defaultAvatar, userId, model);
             }
             
             // If the current user was updated, update the locale
@@ -212,7 +228,6 @@ public class UserSettingsController {
             model.addAttribute("userId", userId);
             model.addAttribute("username", username);
             model.addAttribute("displayName", displayName);
-            // Load user settings to get selected language and unit system
             UserSettings userSettings = userSettingsJdbcService.findByUserId(userId).orElse(UserSettings.defaultSettings(userId));
             model.addAttribute("selectedLanguage", userSettings.getSelectedLanguage());
             model.addAttribute("selectedUnitSystem", userSettings.getUnitSystem().name());
@@ -229,9 +244,12 @@ public class UserSettingsController {
         
         // Check if user has avatar
         if (userId != null) {
-            boolean hasAvatar = checkUserHasAvatar(userId);
+            boolean hasAvatar = this.avatarService.getInfo(userId).isPresent();
             model.addAttribute("hasAvatar", hasAvatar);
         }
+        
+        // Add default avatars to model
+        model.addAttribute("defaultAvatars", DEFAULT_AVATARS);
         
         return "fragments/user-management :: user-form";
     }
@@ -420,35 +438,14 @@ public class UserSettingsController {
                 }
                 
                 byte[] imageData = avatar.getBytes();
-
-                jdbcTemplate.update("DELETE FROM user_avatars WHERE user_id = ?", userId);
-                jdbcTemplate.update(
-                        "INSERT INTO user_avatars (user_id, mime_type, binary_data) " +
-                                "VALUES (?, ?, ?) ",
-                        userId,
-                        contentType,
-                        imageData
-                );
-
+                this.avatarService.updateAvatar(userId, contentType, imageData);
 
             } catch (IOException e) {
                 model.addAttribute("avatarError", "Error processing avatar file: " + e.getMessage());
             }
         }
     }
-    
-    private void deleteAvatar(Long userId) {
-        jdbcTemplate.update("DELETE FROM user_avatars WHERE user_id = ?", userId);
-    }
-    
-    private boolean checkUserHasAvatar(Long userId) {
-        Integer count = jdbcTemplate.queryForObject(
-            "SELECT COUNT(*) FROM user_avatars WHERE user_id = ?", 
-            Integer.class, 
-            userId
-        );
-        return count != null && count > 0;
-    }
+
     
     private boolean isAllowedContentType(String contentType) {
         for (String allowed : ALLOWED_CONTENT_TYPES) {
@@ -457,5 +454,30 @@ public class UserSettingsController {
             }
         }
         return false;
+    }
+    
+    private void handleDefaultAvatarSelection(String defaultAvatar, Long userId, Model model) {
+        try {
+            // Validate the default avatar selection
+            if (!DEFAULT_AVATARS.contains(defaultAvatar)) {
+                model.addAttribute("avatarError", "Invalid default avatar selection.");
+                return;
+            }
+            
+            // Load the default avatar from resources
+            ClassPathResource resource = new ClassPathResource("static/img/avatars/default/" + defaultAvatar);
+            if (!resource.exists()) {
+                model.addAttribute("avatarError", "Default avatar file not found.");
+                return;
+            }
+            
+            byte[] imageData = resource.getInputStream().readAllBytes();
+            String mimeType = "image/jpeg"; // All your defaults are .jpg
+
+            this.avatarService.updateAvatar(userId, mimeType, imageData);
+
+        } catch (IOException e) {
+            model.addAttribute("avatarError", "Error processing default avatar: " + e.getMessage());
+        }
     }
 }
