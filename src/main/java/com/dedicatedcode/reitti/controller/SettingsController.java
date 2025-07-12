@@ -8,7 +8,6 @@ import com.dedicatedcode.reitti.repository.*;
 import com.dedicatedcode.reitti.service.*;
 import com.dedicatedcode.reitti.service.processing.ProcessingPipelineTrigger;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
@@ -23,7 +22,6 @@ import org.springframework.ui.Model;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import org.springframework.web.servlet.LocaleResolver;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -37,7 +35,6 @@ public class SettingsController {
     private static final Logger logger = LoggerFactory.getLogger(SettingsController.class);
 
     private final ApiTokenService apiTokenService;
-    private final UserJdbcService userJdbcService;
     private final QueueStatsService queueStatsService;
     private final PlaceService placeService;
     private final SignificantPlaceJdbcService placeJdbcService;
@@ -52,9 +49,10 @@ public class SettingsController {
     private final int maxErrors;
     private final boolean dataManagementEnabled;
     private final MessageSource messageSource;
-    private final LocaleResolver localeResolver;
     private final Properties gitProperties = new Properties();
     private final ProcessingPipelineTrigger processingPipelineTrigger;
+
+    private final UserJdbcService userJdbcService;
 
     public SettingsController(ApiTokenService apiTokenService,
                               UserJdbcService userJdbcService,
@@ -71,7 +69,6 @@ public class SettingsController {
                               @Value("${reitti.geocoding.max-errors}") int maxErrors,
                               @Value("${reitti.data-management.enabled:false}") boolean dataManagementEnabled,
                               MessageSource messageSource,
-                              LocaleResolver localeResolver,
                               ProcessingPipelineTrigger processingPipelineTrigger) {
         this.apiTokenService = apiTokenService;
         this.userJdbcService = userJdbcService;
@@ -89,7 +86,6 @@ public class SettingsController {
         this.maxErrors = maxErrors;
         this.dataManagementEnabled = dataManagementEnabled;
         this.messageSource = messageSource;
-        this.localeResolver = localeResolver;
         this.processingPipelineTrigger = processingPipelineTrigger;
         loadGitProperties();
     }
@@ -126,14 +122,6 @@ public class SettingsController {
         return "fragments/settings :: api-tokens-content";
     }
 
-    @GetMapping("/users-content")
-    public String getUsersContent(Authentication authentication, Model model) {
-        String currentUsername = authentication.getName();
-        List<User> users = userJdbcService.getAllUsers();
-        model.addAttribute("users", users);
-        model.addAttribute("currentUsername", currentUsername);
-        return "fragments/settings :: users-content";
-    }
 
     @GetMapping("/places-content")
     public String getPlacesContent(Authentication authentication,
@@ -207,32 +195,6 @@ public class SettingsController {
         return "fragments/settings :: api-tokens-content";
     }
 
-    @PostMapping("/users/{userId}/delete")
-    public String deleteUser(@PathVariable Long userId, Authentication authentication, Model model) {
-        String currentUsername = authentication.getName();
-        User currentUser = userJdbcService.findByUsername(currentUsername)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + currentUsername));
-
-        // Prevent self-deletion
-        if (currentUser.getId().equals(userId)) {
-            model.addAttribute("errorMessage", getMessage("message.error.user.self.delete"));
-        } else {
-            try {
-                userJdbcService.deleteUser(userId);
-                model.addAttribute("successMessage", getMessage("message.success.user.deleted"));
-            } catch (Exception e) {
-                model.addAttribute("errorMessage", getMessage("message.error.user.deletion", e.getMessage()));
-            }
-        }
-
-        // Get updated user list and add to model
-        List<User> users = userJdbcService.getAllUsers();
-        model.addAttribute("users", users);
-        model.addAttribute("currentUsername", currentUsername);
-
-        // Return the users-content fragment
-        return "fragments/settings :: users-content";
-    }
 
     @PostMapping("/places/{placeId}/update")
     @ResponseBody
@@ -294,90 +256,12 @@ public class SettingsController {
         return response;
     }
 
-    @PostMapping("/users")
-    public String createUser(@RequestParam String username,
-                             @RequestParam String displayName,
-                             @RequestParam String password,
-                             Authentication authentication,
-                             Model model) {
-        String currentUsername = authentication.getName();
 
-        try {
-            userJdbcService.createUser(username, displayName, password);
-            model.addAttribute("successMessage", getMessage("message.success.user.created"));
-        } catch (Exception e) {
-            model.addAttribute("errorMessage", getMessage("message.error.user.creation", e.getMessage()));
-        }
-
-        // Get updated user list and add to model
-        List<User> users = userJdbcService.getAllUsers();
-        model.addAttribute("users", users);
-        model.addAttribute("currentUsername", currentUsername);
-
-        // Return the users-content fragment
-        return "fragments/settings :: users-content";
-    }
-
-    @PostMapping("/users/update")
-    public String updateUser(@RequestParam Long userId,
-                             @RequestParam String username,
-                             @RequestParam String displayName,
-                             @RequestParam(required = false) String password,
-                             Authentication authentication,
-                             Model model) {
-        String currentUsername = authentication.getName();
-        User currentUser = userJdbcService.findById(userId)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + userId));
-        boolean isCurrentUser = currentUser.getId().equals(userId);
-
-        try {
-            userJdbcService.updateUser(userId, username, displayName, password);
-            model.addAttribute("successMessage", getMessage("message.success.user.updated"));
-
-            // If the current user was updated, update the authentication
-            if (isCurrentUser && !currentUsername.equals(username)) {
-                // We need to re-authenticate with the new username
-                model.addAttribute("requireRelogin", true);
-                model.addAttribute("newUsername", username);
-            }
-        } catch (Exception e) {
-            model.addAttribute("errorMessage", getMessage("message.error.user.update", e.getMessage()));
-        }
-
-        // Get updated user list and add to model
-        List<User> users = userJdbcService.getAllUsers();
-        model.addAttribute("users", users);
-        model.addAttribute("currentUsername", isCurrentUser ? username : currentUsername);
-
-        // Return the users-content fragment
-        return "fragments/settings :: users-content";
-    }
 
     @GetMapping("/queue-stats-content")
     public String getQueueStatsContent(Model model) {
         model.addAttribute("queueStats", queueStatsService.getQueueStats());
         return "fragments/settings :: queue-stats-content";
-    }
-
-    @GetMapping("/language-content")
-    public String getLanguageContent() {
-        return "fragments/settings :: language-content";
-    }
-
-    @PostMapping("/language")
-    public String changeLanguage(@RequestParam String lang, 
-                                HttpServletRequest request, 
-                                HttpServletResponse response, 
-                                Model model) {
-        try {
-            Locale locale = Locale.forLanguageTag(lang);
-            localeResolver.setLocale(request, response, locale);
-            model.addAttribute("successMessage", getMessage("message.success.language.changed"));
-        } catch (Exception e) {
-            model.addAttribute("errorMessage", getMessage("message.error.language.change", e.getMessage()));
-        }
-        
-        return "fragments/settings :: language-content";
     }
 
     @GetMapping("/integrations-content")
@@ -671,18 +555,6 @@ public class SettingsController {
         return "fragments/settings :: integrations-content";
     }
 
-    @GetMapping("/user-form")
-    public String getUserForm(@RequestParam(required = false) Long userId,
-                              @RequestParam(required = false) String username,
-                              @RequestParam(required = false) String displayName,
-                              Model model) {
-        if (userId != null) {
-            model.addAttribute("userId", userId);
-            model.addAttribute("username", username);
-            model.addAttribute("displayName", displayName);
-        }
-        return "fragments/settings :: user-form";
-    }
 
     @GetMapping("/manage-data-content")
     public String getManageDataContent(Model model) {

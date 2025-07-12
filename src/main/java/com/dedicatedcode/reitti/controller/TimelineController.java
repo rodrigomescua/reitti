@@ -1,9 +1,12 @@
 package com.dedicatedcode.reitti.controller;
 
+import com.dedicatedcode.reitti.dto.ConnectedUserAccount;
 import com.dedicatedcode.reitti.model.*;
 import com.dedicatedcode.reitti.repository.*;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
@@ -19,16 +22,19 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 @Controller
 @RequestMapping("/timeline")
 public class TimelineController {
 
+    private static final Logger log = LoggerFactory.getLogger(TimelineController.class);
     private final RawLocationPointJdbcService rawLocationPointJdbcService;
     private final SignificantPlaceJdbcService placeService;
     private final UserJdbcService userJdbcService;
     private final ProcessedVisitJdbcService processedVisitJdbcService;
     private final TripJdbcService tripJdbcService;
+    private final UserSettingsJdbcService userSettingsJdbcService;
     private final ObjectMapper objectMapper;
 
     @Autowired
@@ -37,12 +43,14 @@ public class TimelineController {
                               UserJdbcService userJdbcService,
                               ProcessedVisitJdbcService processedVisitJdbcService,
                               TripJdbcService tripJdbcService,
+                              UserSettingsJdbcService userSettingsJdbcService,
                               ObjectMapper objectMapper) {
         this.rawLocationPointJdbcService = rawLocationPointJdbcService;
         this.placeService = placeService;
         this.userJdbcService = userJdbcService;
         this.processedVisitJdbcService = processedVisitJdbcService;
         this.tripJdbcService = tripJdbcService;
+        this.userSettingsJdbcService = userSettingsJdbcService;
         this.objectMapper = objectMapper;
     }
 
@@ -67,17 +75,60 @@ public class TimelineController {
         List<Trip> trips = tripJdbcService.findByUserAndTimeOverlap(
                 user, startOfDay, endOfDay);
         
-        // Convert to timeline entries
-        List<TimelineEntry> entries = buildTimelineEntries(user, processedVisits, trips, userTimezone, selectedDate);
+        // Get user settings for unit system and connected accounts
+        UserSettings userSettings = userSettingsJdbcService.findByUserId(user.getId())
+                .orElse(UserSettings.defaultSettings(user.getId()));
         
-        model.addAttribute("entries", entries);
+        // Build timeline data for current user and connected users
+        List<UserTimelineData> allUsersData = new ArrayList<>();
+        
+        // Add current user data first
+        List<TimelineEntry> currentUserEntries = buildTimelineEntries(user, processedVisits, trips, userTimezone, selectedDate, userSettings.getUnitSystem());
+        String currentUserAvatarUrl = String.format("/avatars/%d", user.getId());
+        String currentUserRawLocationPointsUrl = String.format("/api/v1/raw-location-points/%d?date=%s&timezone=%s", user.getId(), date, timezone);
+        allUsersData.add(new UserTimelineData(user.getId(), user.getUsername(), currentUserAvatarUrl, null, currentUserEntries, currentUserRawLocationPointsUrl));
+        
+        // Add connected users data, sorted by username
+        List<ConnectedUserAccount> connectedAccounts = userSettings.getConnectedUserAccounts();
+
+        // Sort connected users by username
+        connectedAccounts.sort(Comparator.comparing(ConnectedUserAccount::userId));
+        
+        for (ConnectedUserAccount connectedUserAccount : connectedAccounts) {
+            Optional<User> connectedUserOpt = this.userJdbcService.findById(connectedUserAccount.userId());
+            if (connectedUserOpt.isEmpty()) {
+                log.warn("Could not find user with id {}", connectedUserAccount.userId());
+                continue;
+            }
+            User connectedUser = connectedUserOpt.get();
+            // Get connected user's timeline data for the same date
+            List<ProcessedVisit> connectedVisits = processedVisitJdbcService.findByUserAndTimeOverlap(
+                    connectedUser, startOfDay, endOfDay);
+            List<Trip> connectedTrips = tripJdbcService.findByUserAndTimeOverlap(
+                    connectedUser, startOfDay, endOfDay);
+            
+            // Get connected user's unit system
+            UserSettings connectedUserSettings = userSettingsJdbcService.findByUserId(connectedUser.getId())
+                    .orElse(UserSettings.defaultSettings(connectedUser.getId()));
+            
+            List<TimelineEntry> connectedUserEntries = buildTimelineEntries(connectedUser, connectedVisits, connectedTrips, userTimezone, selectedDate, connectedUserSettings.getUnitSystem());
+            String connectedUserAvatarUrl = String.format("/avatars/%d", connectedUser.getId());
+            String connectedUserRawLocationPointsUrl = String.format("/api/v1/raw-location-points/%d?date=%s&timezone=%s", connectedUser.getId(), date, timezone);
+            
+            allUsersData.add(new UserTimelineData(connectedUser.getId(), connectedUser.getDisplayName(), connectedUserAvatarUrl, connectedUserAccount.color(), connectedUserEntries, connectedUserRawLocationPointsUrl));
+        }
+        
+        // Create timeline data record
+        TimelineData timelineData = new TimelineData(allUsersData);
+        
+        model.addAttribute("timelineData", timelineData);
         return "fragments/timeline :: timeline-content";
     }
     
     /**
      * Build timeline entries from processed visits and trips
      */
-    private List<TimelineEntry> buildTimelineEntries(User user, List<ProcessedVisit> processedVisits, List<Trip> trips, ZoneId timezone, LocalDate selectedDate) throws JsonProcessingException {
+    private List<TimelineEntry> buildTimelineEntries(User user, List<ProcessedVisit> processedVisits, List<Trip> trips, ZoneId timezone, LocalDate selectedDate, UnitSystem unitSystem) throws JsonProcessingException {
         List<TimelineEntry> entries = new ArrayList<>();
         
         // Add processed visits to timeline
@@ -115,8 +166,10 @@ public class TimelineController {
             entry.setPath(objectMapper.writeValueAsString(pathPoints));
             if (trip.getTravelledDistanceMeters() != null) {
                 entry.setDistanceMeters(trip.getTravelledDistanceMeters());
+                entry.setFormattedDistance(formatDistance(trip.getTravelledDistanceMeters(), unitSystem));
             } else if (trip.getEstimatedDistanceMeters() != null) {
                 entry.setDistanceMeters(trip.getEstimatedDistanceMeters());
+                entry.setFormattedDistance(formatDistance(trip.getEstimatedDistanceMeters(), unitSystem));
             }
             
             if (trip.getTransportModeInferred() != null) {
@@ -172,13 +225,54 @@ public class TimelineController {
         if (hours > 0) {
             return hours + "h " + minutes + "m";
         } else {
-            return minutes + "m";
+            return minutes + "min";
+        }
+    }
+    
+    /**
+     * Format distance according to unit system
+     */
+    private String formatDistance(Double distanceMeters, UnitSystem unitSystem) {
+        if (distanceMeters == null) {
+            return "";
+        }
+        
+        switch (unitSystem) {
+            case METRIC:
+                if (distanceMeters >= 1000) {
+                    return String.format("%.1f km", distanceMeters / 1000.0);
+                } else {
+                    return String.format("%.0f m", distanceMeters);
+                }
+            case IMPERIAL:
+                double distanceFeet = distanceMeters * 3.28084;
+                if (distanceFeet >= 5280) {
+                    double distanceMiles = distanceFeet / 5280.0;
+                    return String.format("%.1f mi", distanceMiles);
+                } else {
+                    return String.format("%.0f ft", distanceFeet);
+                }
+            default:
+                return String.format("%.1f km", distanceMeters / 1000.0);
         }
     }
 
 
     public record PointInfo(Double latitude, Double longitude, Instant timestamp, Double accuracy) {
     }
+    
+    public record TimelineData(
+        List<UserTimelineData> users
+    ) {}
+    
+    public record UserTimelineData(
+        long userId,
+        String displayName,
+        String userAvatarUrl,
+        String baseColor,
+        List<TimelineEntry> entries,
+        String rawLocationPointsUrl
+    ) {}
     /**
      * Inner class to represent timeline entries for the template
      */
@@ -194,8 +288,9 @@ public class TimelineController {
         private String formattedTimeRange;
         private String formattedDuration;
         private Double distanceMeters;
+        private String formattedDistance;
         private String transportMode;
-        
+
         // Getters and setters
         public String getId() { return id; }
         public void setId(String id) { this.id = id; }
@@ -221,11 +316,15 @@ public class TimelineController {
         public Double getDistanceMeters() { return distanceMeters; }
         public void setDistanceMeters(Double distanceMeters) { this.distanceMeters = distanceMeters; }
         
+        public String getFormattedDistance() { return formattedDistance; }
+        public void setFormattedDistance(String formattedDistance) { this.formattedDistance = formattedDistance; }
+        
         public String getTransportMode() { return transportMode; }
         public void setTransportMode(String transportMode) { this.transportMode = transportMode; }
 
         public String getPath() { return path; }
         public void setPath(String path) { this.path = path; }
+        
     }
 
     @GetMapping("/places/edit-form/{id}")

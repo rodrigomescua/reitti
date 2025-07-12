@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!-- Users Content Fragment -->
+<div th:fragment="users-content">
+    <h2 th:text="#{users.title}">User Management</h2>
+
+    <div th:if="${successMessage}" class="alert alert-success" style="display: block;">
+        <span th:text="${successMessage}">User created successfully</span>
+    </div>
+    <div th:if="${errorMessage}" class="alert alert-danger" style="display: block;">
+        <span th:text="${errorMessage}">Error message</span>
+    </div>
+    <div th:if="${requireRelogin}" class="alert alert-warning" style="display: block;">
+        <span>Your username has changed to <strong th:text="${newUsername}"></strong>. You will need to log out and log in again with your new username.</span>
+    </div>
+
+    <div class="settings-card">
+        <h3 th:text="#{users.existing}">Existing Users</h3>
+        <div th:if="${users.isEmpty()}">
+            <p th:text="#{users.no.users}">No users found.</p>
+        </div>
+
+        <table th:if="${!users.isEmpty()}">
+            <thead>
+            <tr>
+                <th th:text="#{users.table.username}">Username</th>
+                <th th:text="#{users.table.display.name}">Display Name</th>
+                <th th:text="#{users.table.actions}">Actions</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr th:each="user : ${users}" th:attr="data-user-id=${user.id}" class="user-row">
+                <td th:text="${user.username}" th:attr="data-username=${user.username}"></td>
+                <td th:text="${user.displayName}" th:attr="data-display-name=${user.displayName}"></td>
+                <td>
+                    <button class="btn"
+                            th:attr="hx-get=@{/settings/user-form(userId=${user.id}, username=${user.username}, displayName=${user.displayName})}"
+                            hx-target="#user-form-container"
+                            th:text="#{form.update}">Edit
+                    </button>
+                    <button th:if="${user.username != currentUsername}"
+                            class="btn btn-danger"
+                            th:attr="hx-post=@{/settings/users/{id}/delete(id=${user.id})}, hx-confirm=#{users.delete.confirm}"
+                            hx-target="#user-management"
+                            hx-swap="innerHTML"
+                            th:text="#{form.delete}">Delete
+                    </button>
+                </td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+    <div id="user-form-container" class="settings-card">
+        <div hx-get="/settings/user-form" hx-trigger="load" hx-target="#user-form-container"></div>
+    </div>
+</div>
+
+<!-- User Form Fragment -->
+<div th:fragment="user-form">
+    <form hx-target="#user-management" hx-swap="innerHTML" class="user-form" autocomplete="off" 
+          th:attr="hx-post=${userId != null ? '/settings/users/update' : '/settings/users'}"
+          enctype="multipart/form-data">
+        <input type="hidden" name="userId" th:value="${userId}">
+        <h3 th:text="${userId != null ? #messages.msg('users.update.title') : #messages.msg('users.add.title')}">Add New User</h3>
+        <div class="form-group">
+            <label for="username" th:text="#{users.username.label}">Username</label>
+            <input type="text" id="username" name="username" required th:placeholder="#{users.username.placeholder}" autocomplete="off" 
+                   th:value="${username}">
+        </div>
+        <div class="form-group">
+            <label for="displayName" th:text="#{users.display.name.label}">Display Name</label>
+            <input type="text" id="displayName" name="displayName" required th:placeholder="#{users.display.name.placeholder}" autocomplete="off"
+                   th:value="${displayName}">
+        </div>
+        <div class="form-group">
+            <label for="avatar" th:text="#{users.avatar.label}">Profile Picture</label>
+            <div th:if="${userId != null && hasAvatar}" class="current-avatar">
+                <img th:src="@{/avatars/{userId}(userId=${userId})}" 
+                     alt="Current avatar" 
+                     class="avatar-preview">
+            </div>
+            <div class="avatar-input-row">
+                <input type="file" id="avatar" name="avatar" accept="image/jpeg,image/png,image/gif,image/webp">
+                <button type="button" 
+                        th:if="${userId != null && hasAvatar}"
+                        class="btn btn-danger avatar-remove-btn"
+                        onclick="removeCurrentAvatar()"
+                        th:text="#{users.avatar.delete}">Remove current avatar</button>
+            </div>
+            <small th:text="#{users.avatar.requirements}">Max 2MB. JPEG, PNG, GIF, or WebP format.</small>
+            <input type="hidden" id="removeAvatarFlag" name="removeAvatar" value="false">
+        </div>
+        <div class="form-group">
+            <label for="password" th:text="#{users.password.label}">Password</label>
+            <input type="password" id="password" name="password" th:required="${userId == null}" th:placeholder="#{users.password.placeholder}" autocomplete="new-password">
+            <small th:if="${userId != null}" th:text="#{users.password.keep.current}">Leave empty to keep current password</small>
+        </div>
+        <div class="form-group">
+            <label th:text="#{language.title}">Preferred Language</label>
+            <div class="language-selection">
+                <div class="language-buttons">
+                    <label class="btn language-btn">
+                        <input type="radio" name="preferred_language" value="en" th:checked="${selectedLanguage == 'en' || selectedLanguage == null}" style="display: none;">
+                        <span class="language-flag">🇺🇸</span>
+                        <span th:text="#{language.english}" class="language-name">English</span>
+                    </label>
+
+                    <label class="btn language-btn">
+                        <input type="radio" name="preferred_language" value="fi" th:checked="${selectedLanguage == 'fi'}" style="display: none;">
+                        <span class="language-flag">🇫🇮</span>
+                        <span th:text="#{language.finnish}" class="language-name">Suomi</span>
+                    </label>
+
+                    <label class="btn language-btn">
+                        <input type="radio" name="preferred_language" value="de" th:checked="${selectedLanguage == 'de'}" style="display: none;">
+                        <span class="language-flag">🇩🇪</span>
+                        <span th:text="#{language.german}" class="language-name">Deutsch</span>
+                    </label>
+
+                    <label class="btn language-btn">
+                        <input type="radio" name="preferred_language" value="fr" th:checked="${selectedLanguage == 'fr'}" style="display: none;">
+                        <span class="language-flag">🇫🇷</span>
+                        <span th:text="#{language.french}" class="language-name">Français</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label th:text="#{units.title}">Unit System</label>
+            <div class="language-selection">
+                <div class="language-buttons">
+                    <label class="btn language-btn">
+                        <input type="radio" name="unit_system" value="METRIC" th:checked="${selectedUnitSystem == 'METRIC' || selectedUnitSystem == null}" style="display: none;">
+                        <span th:text="#{units.metric}" class="language-name">Metric</span>
+                        <small th:text="#{units.metric.description}" class="unit-description">km, m, °C</small>
+                    </label>
+
+                    <label class="btn language-btn">
+                        <input type="radio" name="unit_system" value="IMPERIAL" th:checked="${selectedUnitSystem == 'IMPERIAL'}" style="display: none;">
+                        <span th:text="#{units.imperial}" class="language-name">Imperial</span>
+                        <span th:text="#{units.imperial.description}" class="unit-description">mi, ft, °F</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="checkbox-container">
+                <input type="checkbox" name="preferColoredMap" th:checked="${preferColoredMap}" class="checkbox-input">
+                <span class="checkbox-checkmark"></span>
+                <span th:text="#{map.colored.preference}" class="checkbox-label">Show map in color</span>
+            </label>
+            <small th:text="#{map.colored.preference.description}" class="form-description">When enabled, the map will be displayed in full color. When disabled, the map will be shown in grayscale.</small>
+        </div>
+        <div id="connected-accounts-container" 
+             hx-get="/settings/connected-accounts-section"
+             hx-target="#connected-accounts-container"
+             th:hx-vals="${userId != null ? '{&quot;userId&quot;: ' + userId + '}' : '{}'}"
+             hx-trigger="load">
+            <div class="htmx-indicator">Loading connected accounts...</div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <button type="submit" class="btn" th:text="${userId != null ? #messages.msg('form.update') : #messages.msg('form.create')}">Create User</button>
+            <button type="button" class="btn" th:if="${userId != null}" 
+                    hx-get="/settings/user-form" hx-target="#user-form-container" th:text="#{form.cancel}">Cancel</button>
+        </div>
+    </form>
+</div>
+
+<!-- Connected Accounts Section Fragment -->
+<div th:fragment="connected-accounts-section">
+    <div class="form-group">
+        <label th:text="#{users.connected.accounts.label}">Connected User Accounts</label>
+        <p class="form-description" th:text="#{users.connected.accounts.description}">Connect with other users to view their location data alongside yours on the map. Each connected user will be displayed with their own color for easy identification.</p>
+        <div id="connected-accounts-list">
+            <div th:each="account, iterStat : ${connectedAccounts}" class="connected-account-row">
+                <div class="select">
+                <select name="connectedUserIds" th:attr="data-index=${iterStat.index}">
+                    <option value="" th:text="#{users.select.user}">Select a user...</option>
+                    <option th:each="user : ${availableUsers}" 
+                            th:value="${user.id}" 
+                            th:text="${user.displayName + ' (' + user.username + ')'}"
+                            th:selected="${user.id == account.userId()}"></option>
+                </select>
+                </div>
+                <input type="color" 
+                       name="connectedUserColors" 
+                       th:value="${account.color()}" 
+                       th:attr="data-index=${iterStat.index}" 
+                       title="Choose color">
+                <button type="button" 
+                        class="btn btn-danger"
+                        th:attr="hx-post=@{/settings/connected-accounts/remove(userId=${userId}, removeIndex=${iterStat.index})}"
+                        hx-include="closest form"
+                        hx-target="#connected-accounts-container"
+                        th:text="#{form.remove}">Remove</button>
+                <!-- Hidden inputs to preserve existing data -->
+                <input type="hidden" name="existingUserIds" th:value="${account.userId()}">
+                <input type="hidden" name="existingColors" th:value="${account.color()}">
+            </div>
+            <div th:if="${connectedAccounts != null && connectedAccounts.isEmpty()}" class="no-connected-accounts">
+                <span th:text="#{users.no.connected.accounts}">No connected accounts yet.</span>
+            </div>
+        </div>
+        <button type="button" 
+                class="btn"
+                th:attr="hx-post=@{/settings/connected-accounts/add(userId=${userId})}"
+                hx-include="closest form"
+                hx-target="#connected-accounts-container"
+                th:text="#{users.add.connected.account}">Add Connected Account</button>
+        <div th:if="${availableUsers.isEmpty()}" class="no-users-message">
+            <small th:text="#{users.no.other.users}">No other users available to connect.</small>
+        </div>
+    </div>
+</div>
+
+
+</body>
+</html>

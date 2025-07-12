@@ -49,14 +49,6 @@
 <script th:inline="javascript">
     // Locale object for JavaScript
     window.locale = {
-        loading: /*[[#{timeline.loading}]]*/ 'Loading...',
-        noData: /*[[#{timeline.no.data}]]*/ 'No timeline data available for this date.',
-        duration: /*[[#{timeline.duration}]]*/ 'Duration',
-        distance: /*[[#{timeline.distance}]]*/ 'Distance',
-        trip: /*[[#{timeline.trip}]]*/ 'Trip',
-        transportWalking: /*[[#{timeline.transport.walking}]]*/ 'by foot',
-        transportCycling: /*[[#{timeline.transport.cycling}]]*/ 'by bike',
-        transportDriving: /*[[#{timeline.transport.driving}]]*/ 'by car',
         today: /*[[#{datepicker.today}]]*/ 'Today',
         days: [
             /*[[#{datepicker.days.sun}]]*/ 'Sun',
@@ -82,19 +74,40 @@
             /*[[#{datepicker.months.dec}]]*/ 'Dec'
         ]
     };
-    
-    // Set locale for HumanizeDuration
-    const currentLocale = /*[[${#locale.language}]]*/ 'en';
 
+    window.userSettings = /*[[${userSettings}]]*/ {}
     // Helper function for HTMX to get current selected date
     function getSelectedDate() {
         const urlParams = new URLSearchParams(window.location.search);
         return urlParams.get('date') || new Date().toISOString().split('T')[0];
     }
-
     // Helper function for HTMX to get user timezone
     function getUserTimezone() {
         return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    }
+
+    function selectUser(userHeader) {
+        // Remove active class from all user headers
+        document.querySelectorAll('.user-header').forEach(header => {
+            header.classList.remove('active');
+        });
+
+        // Add active class to clicked user header
+        userHeader.classList.add('active');
+
+        // Get the user ID from the clicked header
+        const userId = userHeader.getAttribute('data-user-id');
+
+        // Hide all user timeline sections
+        document.querySelectorAll('.user-timeline-section').forEach(section => {
+            section.classList.remove('active');
+        });
+
+        // Show the corresponding user timeline section
+        const targetSection = document.querySelector(`.user-timeline-section[data-user-id="${userId}"]`);
+        if (targetSection) {
+            targetSection.classList.add('active');
+        }
     }
 
     const fitToBoundsConfig = {
@@ -103,10 +116,7 @@
         zoomSnap: 0.1
     };
 
-
     document.addEventListener('DOMContentLoaded', function () {
-
-
         // Check if date is in URL parameters
         const urlParams = new URLSearchParams(window.location.search);
         let initialDate;
@@ -132,11 +142,18 @@
 
         // Initialize the map
         const map = L.map('map', {zoomControl: false, attributionControl: false}).setView([60.1699, 24.9384], 12); // Helsinki coordinates as default
-        L.tileLayer.grayscale('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a> hosted by <a href="https://openstreetmap.fr/" target="_blank">OpenStreetMap France</a>'
-        }).addTo(map);
 
+        if (window.userSettings.preferColoredMap) {
+            L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a> hosted by <a href="https://openstreetmap.fr/" target="_blank">OpenStreetMap France</a>'
+            }).addTo(map);
+        } else {
+            L.tileLayer.grayscale('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a> hosted by <a href="https://openstreetmap.fr/" target="_blank">OpenStreetMap France</a>'
+            }).addTo(map);
+        }
         L.control.attribution({position: 'topright'}).addAttribution('&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, Tiles style by <a href="https://www.hotosm.org/" target="_blank">Humanitarian OpenStreetMap Team</a> hosted by <a href="https://openstreetmap.fr/" target="_blank">OpenStreetMap France</a>')
             .addTo(map)
 
@@ -151,32 +168,53 @@
         function loadTimelineData(date) {
             // Load photos for the selected date
             photoClient.updatePhotosForDate(date, getUserTimezone());
+            // Get raw location points URL from timeline container
+            const timelineContainer = document.querySelectorAll('.user-timeline-section');
+            for (const path of rawPointPaths) {
+                path.remove();
+            }
 
-            // Fetch raw location points for map display
-            fetch(`/api/v1/raw-location-points?date=${date}&timezone=${getUserTimezone()}`).then(response => {
-                if (!response.ok) {
-                    console.warn('Could not fetch raw location points');
-                    return { points: [] };
+            for (const element of timelineContainer) {
+                const rawLocationPointsUrl = element?.dataset.rawLocationPointsUrl;
+                const color = element?.dataset.baseColor;
+                if (rawLocationPointsUrl) {
+                    // Fetch raw location points for map display
+                    fetch(rawLocationPointsUrl).then(response => {
+                        if (!response.ok) {
+                            console.warn('Could not fetch raw location points');
+                            return { points: [] };
+                        }
+                        return response.json();
+                    }).then(rawPointsData => {
+                        updateMapWithRawPoints(rawPointsData, color);
+                    }).then(() => {
+                        window.originalBounds = bounds;
+                        map.fitBounds(bounds, fitToBoundsConfig)
+                    }).catch(error => {
+                        console.warn('Error fetching raw location points:', error);
+                    });
                 }
-                return response.json();
-            }).then(rawPointsData => {
-                updateMapWithRawPoints(rawPointsData);
-            }).catch(error => {
-                console.warn('Error fetching raw location points:', error);
-            });
+            }
+
+
         }
 
         // Function to update map with raw location points
-        function updateMapWithRawPoints(rawPointsData) {
-            // Remove existing raw points path
-            rawPointsPath.remove();
+        function updateMapWithRawPoints(rawPointsData, color) {
+            const rawPointsPath = L.polyline([], {
+                color: color == null ? '#f1ba63' : color,
+                weight: 6,
+                opacity: 0.9,
+                lineJoin: 'round',
+                lineCap: 'round'
+            });
 
-            // Add raw location points if available
             if (rawPointsData && rawPointsData.points && rawPointsData.points.length > 0) {
                 const rawPointsCoords = rawPointsData.points.map(point => [point.latitude, point.longitude]);
+                bounds.extend(rawPointsCoords)
                 rawPointsPath.setLatLngs(rawPointsCoords);
                 rawPointsPath.addTo(map);
-                map.fitBounds(rawPointsCoords, fitToBoundsConfig)
+                rawPointPaths.push(rawPointsPath)
             }
         }
 
@@ -188,22 +226,15 @@
             lineCap: 'round'
         });
 
-        // Create a polyline for raw location points
-        const rawPointsPath = L.polyline([], {
-            color: '#f1ba63',  // Purple color for raw points
-            weight: 6,
-            opacity: 0.9,
-            lineJoin: 'round',
-            lineCap: 'round'
-        });
-
+        const rawPointPaths = [];
 
         // Add HTMX event handlers for timeline updates
         document.body.addEventListener('htmx:afterSwap', function(event) {
             if (event.detail.target.classList.contains('timeline-container')) {
                 // Timeline content has been updated, update map markers
-                updateMapFromTimeline();
+                bounds = L.latLngBounds()
                 loadTimelineData(getSelectedDate())
+                updateMapFromTimeline();
                 // Initialize scroll indicator after timeline is updated
                 if (window.timelineScrollIndicator) {
                     window.timelineScrollIndicator.cleanup();
@@ -212,7 +243,7 @@
                 window.timelineScrollIndicator.init();
             }
         });
-
+        let bounds = L.latLngBounds();
         // Function to update map markers from timeline entries
         function updateMapFromTimeline() {
             // Clear existing markers and paths (except tile layer)
@@ -222,103 +253,106 @@
                 }
             });
 
-            const bounds = L.latLngBounds();
+
             window.originalBounds = L.latLngBounds();
             let hasValidCoords = false;
 
             // Group places by coordinates to avoid duplicate markers
-            const placeGroups = new Map();
 
-            // Get all timeline entries from the DOM
-            const timelineEntries = document.querySelectorAll('.timeline-entry[data-lat][data-lng]');
-            
-            timelineEntries.forEach(entryElement => {
-                const lat = parseFloat(entryElement.dataset.lat);
-                const lng = parseFloat(entryElement.dataset.lng);
-                
-                if (!isNaN(lat) && !isNaN(lng) && entryElement.classList.contains('visit')) {
-                    const coordKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
-                    
-                    if (!placeGroups.has(coordKey)) {
-                        // Extract place name from the timeline entry
-                        const placeNameElement = entryElement.querySelector('.place-name');
-                        const placeName = placeNameElement ? placeNameElement.textContent : 'Unknown Place';
-                        
-                        placeGroups.set(coordKey, {
-                            lat: lat,
-                            lng: lng,
-                            totalDurationMs: 0,
-                            visits: [],
-                            place: { name: placeName, address: '' }
-                        });
+            let timelineUserSections = document.querySelectorAll('.user-timeline-section ');
+
+            for (const timelineUserSection of timelineUserSections) {
+                const color = timelineUserSection?.dataset.baseColor;
+                const timelineEntries = timelineUserSection.querySelectorAll('.timeline-entry[data-lat][data-lng]');
+
+                const placeGroups = new Map();
+
+                timelineEntries.forEach(entryElement => {
+                    const lat = parseFloat(entryElement.dataset.lat);
+                    const lng = parseFloat(entryElement.dataset.lng);
+
+                    if (!isNaN(lat) && !isNaN(lng) && entryElement.classList.contains('visit')) {
+                        const coordKey = `${lat.toFixed(6)},${lng.toFixed(6)}`;
+
+                        if (!placeGroups.has(coordKey)) {
+                            // Extract place name from the timeline entry
+                            const placeNameElement = entryElement.querySelector('.place-name');
+                            const placeName = placeNameElement ? placeNameElement.textContent : 'Unknown Place';
+
+                            placeGroups.set(coordKey, {
+                                lat: lat,
+                                lng: lng,
+                                totalDurationMs: 0,
+                                visits: [],
+                                place: { name: placeName, address: '' }
+                            });
+                        }
+
+                        const group = placeGroups.get(coordKey);
+                        // Calculate duration from time range text
+                        const durationElement = entryElement.querySelector('.entry-duration');
+                        if (durationElement) {
+                            const durationText = durationElement.textContent;
+                            const durationMs = parseDurationText(durationText);
+                            group.totalDurationMs += durationMs;
+                        }
+                        group.visits.push({ id: entryElement.dataset.id });
+
+                        bounds.extend([lat, lng]);
+                        hasValidCoords = true;
                     }
-                    
-                    const group = placeGroups.get(coordKey);
-                    // Calculate duration from time range text
-                    const durationElement = entryElement.querySelector('.entry-duration');
-                    if (durationElement) {
-                        const durationText = durationElement.textContent;
-                        const durationMs = parseDurationText(durationText);
-                        group.totalDurationMs += durationMs;
-                    }
-                    group.visits.push({ id: entryElement.dataset.id });
-                    
-                    bounds.extend([lat, lng]);
-                    window.originalBounds.extend([lat, lng]);
-                    hasValidCoords = true;
-                }
-            });
 
-            // Draw markers for grouped places
-            placeGroups.forEach((group, coordKey) => {
-                const { lat, lng, totalDurationMs, visits, place } = group;
-                
-                // Calculate radius using logarithmic scale
-                const durationHours = totalDurationMs / (1000 * 60 * 60);
-                const baseRadius = 15;
-                const maxRadius = 100;
-                const minRadius = 15;
-                
-                const logScale = Math.log(1 + durationHours) / Math.log(1 + 24);
-                const radius = Math.min(maxRadius, Math.max(minRadius, baseRadius + (logScale * (maxRadius - baseRadius))));
 
-                // Create marker
-                L.circleMarker([lat, lng], {
-                    radius: 5,
-                    fillColor: '#ff6c00',
-                    color: '#fff',
-                    weight: 1,
-                    opacity: 1,
-                    fillOpacity: 0.8
-                }).addTo(map);
+                    // Draw markers for grouped places
+                    placeGroups.forEach((group) => {
+                        const { lat, lng, totalDurationMs, visits, place } = group;
 
-                // Create circle with calculated radius
-                const circle = L.circle([lat, lng], {
-                    color: '#dcae4a',
-                    fillColor: '#ff984f',
-                    fillOpacity: 0.1,
-                    radius: radius
-                }).addTo(map);
+                        // Calculate radius using logarithmic scale
+                        const durationHours = totalDurationMs / (1000 * 60 * 60);
+                        const baseRadius = 15;
+                        const maxRadius = 100;
+                        const minRadius = 15;
 
-                const totalDurationText = humanizeDuration(totalDurationMs, {units: ["h", "m"], round: true});
-                const visitCount = visits.length;
-                const visitText = visitCount === 1 ? 'visit' : 'visits';
-                
-                let tooltip = L.tooltip([lat, lng], {
-                    content: `<div style="font-size: 1.4rem; color: wheat">${place.name}</div>
+                        const logScale = Math.log(1 + durationHours) / Math.log(1 + 24);
+                        const radius = Math.min(maxRadius, Math.max(minRadius, baseRadius + (logScale * (maxRadius - baseRadius))));
+
+                        // Create marker
+                        L.circleMarker([lat, lng], {
+                            radius: 5,
+                            fillColor: color ? color : '#ff6c00',
+                            color: '#fff',
+                            weight: 1,
+                            opacity: 1,
+                            fillOpacity: 0.8
+                        }).addTo(map);
+
+                        // Create circle with calculated radius
+                        const circle = L.circle([lat, lng], {
+                            color: color ? color : '#dcae4a',
+                            fillColor: '#ff984f',
+                            fillOpacity: 0.1,
+                            radius: radius
+                        }).addTo(map);
+
+                        const totalDurationText = humanizeDuration(totalDurationMs, {units: ["h", "m"], round: true});
+                        const visitCount = visits.length;
+                        const visitText = visitCount === 1 ? 'visit' : 'visits';
+
+                        let tooltip = L.tooltip([lat, lng], {
+                            content: `<div style="font-size: 1.4rem; color: wheat">${place.name}</div>
                              <div style="margin-top: 4px; font-weight: bold;">
                                  ${visitCount} ${visitText} - Total: ${totalDurationText}
                              </div>`,
-                    className: 'visit-popup', 
-                    permanent: false
+                            className: 'visit-popup',
+                            permanent: false
+                        });
+
+                        bounds.extend([lat, lng])
+
+                        circle.bindTooltip(tooltip);
+                    });
                 });
 
-                circle.bindTooltip(tooltip);
-            });
-
-            // Fit map to bounds if we have valid coordinates
-            if (hasValidCoords) {
-                map.fitBounds(bounds, fitToBoundsConfig);
             }
         }
 
@@ -375,7 +409,7 @@
                 if (!isNaN(lat) && !isNaN(lng)) {
                     newBounds.extend([lat, lng]);
                 }
-                    
+
                 if (newBounds.isValid()) {
                     map.flyToBounds(newBounds, fitToBoundsConfig);
                 }
@@ -419,6 +453,7 @@
             }
         });
     });
+
 </script>
 </body>
 </html>
