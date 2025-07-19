@@ -10,6 +10,10 @@ Reitti is a comprehensive personal location tracking and analysis application th
 
 ![](.github/screenshots/main.png)
 
+### Multiple Users View
+
+![](.github/screenshots/multiple-users.png)
+
 ### Statistics View
 
 ![](.github/screenshots/statistics.png)
@@ -20,9 +24,10 @@ Reitti is a comprehensive personal location tracking and analysis application th
 - **Significant Places**: Recognize and categorize frequently visited locations with custom naming
 - **Timeline View**: Interactive daily timeline showing visits and trips with duration and distance information
 - **Raw Location Tracking**: Visualize your complete movement path with detailed GPS tracks
+- **Multi-User-View**: Visualize all your family and friends on a single map
 
 ### Data Import & Integration
-- **Multiple Import Formats**: Support for GPX files, Google Takeout JSON, and GeoJSON files
+- **Multiple Import Formats**: Support for GPX files, Google Takeout JSON, Google Timeline Exports and GeoJSON files
 - **Real-time Data Ingestion**: Live location updates via OwnTracks and GPSLogger mobile apps
 - **Batch Processing**: Efficient handling of large location datasets with queue-based processing
 - **API Integration**: RESTful API for programmatic data access and ingestion
@@ -45,6 +50,7 @@ Reitti is a comprehensive personal location tracking and analysis application th
 
 ### Customization & Localization
 - **Multi-language Support**: Available in English, Finnish, German, and French
+- **Unit System**: Display distances in the Imperial or Metric system
 - **Queue Monitoring**: Real-time job status and processing queue visibility
 
 ### Privacy & Self-hosting
@@ -189,6 +195,8 @@ The included `docker-compose.yml` provides a complete setup with:
 | `PHOTON_BASE_URL`   | Base URL for Photon geocoding service                                                                                                                                           |          |
 | `PROCESSING_WAIT_TIME` | How many seconds to wait after the last data input before starting to process all unprocessed data. (⚠️ This needs to be lower than your integrated app reports data in Reitti) | 15 |
 | `DANGEROUS_LIFE`    | Enables data management features that can reset/delete all database data (⚠️ USE WITH CAUTION)                                                                                  | false |
+| `CUSTOM_TILES_SERVICE` | Custom tile service URL template (e.g., `https://tiles.example.com/{z}/{x}/{y}.png`)                                                                                        |          |
+| `CUSTOM_TILES_ATTRIBUTION` | Custom attribution text for the tile service                                                                                                                                |          |
 | `SERVER_PORT`       | Application server port                                                                                                                                                         | 8080     |
 | `APP_UID`           | User ID to run the application as                                                                                                                                               | 1000     |
 | `APP_GID`           | Group ID to run the application as                                                                                                                                              | 1000     |
