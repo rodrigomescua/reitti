@@ -13,21 +13,23 @@ public class User implements UserDetails {
     private final String username;
     private final String password;
     private final String displayName;
+    private final Role role;
     private final Long version;
 
     public User() {
-        this(null, null, null, null, null);
+        this(null, null, null, null, Role.USER, null);
     }
 
     public User(String username, String displayName) {
-        this(null, username, null, displayName, null);
+        this(null, username, null, displayName, Role.USER, null);
     }
 
-    public User(Long id, String username, String password, String displayName, Long version) {
+    public User(Long id, String username, String password, String displayName, Role role, Long version) {
         this.id = id;
         this.username = username;
         this.password = password;
         this.displayName = displayName;
+        this.role = role;
         this.version = version;
     }
 
@@ -65,11 +67,18 @@ public class User implements UserDetails {
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("USER"));
+        if (this.role == null) {
+            return List.of();
+        }
+        return List.of(new SimpleGrantedAuthority("ROLE_" + this.role.name()));
     }
 
     public String getPassword() {
         return password;
+    }
+
+    public Role getRole() {
+        return role;
     }
 
     public Long getVersion() {
@@ -78,15 +87,18 @@ public class User implements UserDetails {
 
     // Wither methods
     public User withPassword(String password) {
-        return new User(this.id, this.username, password, this.displayName, this.version);
+        return new User(this.id, this.username, password, this.displayName, this.role, this.version);
     }
 
     public User withDisplayName(String displayName) {
-        return new User(this.id, this.username, this.password, displayName, this.version);
+        return new User(this.id, this.username, this.password, displayName, this.role, this.version);
     }
 
     public User withVersion(Long version) {
-        return new User(this.id, this.username, this.password, this.displayName, version);
+        return new User(this.id, this.username, this.password, this.displayName, this.role, version);
     }
 
+    public User withRole(Role role) {
+        return new User(this.id, this.username, this.password, this.displayName, role, this.version);
+    }
 }

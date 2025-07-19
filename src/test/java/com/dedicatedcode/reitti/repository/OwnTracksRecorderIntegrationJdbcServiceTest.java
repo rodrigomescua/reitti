@@ -3,6 +3,7 @@ package com.dedicatedcode.reitti.repository;
 import com.dedicatedcode.reitti.IntegrationTest;
 import com.dedicatedcode.reitti.TestingService;
 import com.dedicatedcode.reitti.model.OwnTracksRecorderIntegration;
+import com.dedicatedcode.reitti.model.Role;
 import com.dedicatedcode.reitti.model.User;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -190,7 +191,7 @@ class OwnTracksRecorderIntegrationJdbcServiceTest {
         service.save(this.testingService.admin(), integration);
 
         // Create second user
-        User otherUser = createTestUser(UUID.randomUUID().toString(), "password", UUID.randomUUID().toString());
+        User otherUser = createTestUser(UUID.randomUUID().toString(), "password", "ADMIN", UUID.randomUUID().toString());
 
         // Try to find integration for second user
         Optional<OwnTracksRecorderIntegration> result = service.findByUser(otherUser);
@@ -198,11 +199,11 @@ class OwnTracksRecorderIntegrationJdbcServiceTest {
 
     }
 
-    private User createTestUser(String username, String password, String displayName) {
+    private User createTestUser(String username, String password, String role, String displayName) {
         // Insert user directly into database for testing
-        String sql = "INSERT INTO users (username, password, display_name, version) VALUES (?, ?, ?, ?) RETURNING id";
-        Long userId = jdbcTemplate.queryForObject(sql, Long.class, username, password, displayName, 1L);
+        String sql = "INSERT INTO users (username, password, display_name, role, version) VALUES (?, ?, ?, ?, ?) RETURNING id";
+        Long userId = jdbcTemplate.queryForObject(sql, Long.class, username, password, displayName, role, 1L);
         
-        return new User(userId, username, password, displayName, 1L);
+        return new User(userId, username, password, displayName, Role.ADMIN, 1L);
     }
 }
