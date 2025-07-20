@@ -205,7 +205,44 @@
                 <span class="checkbox-checkmark"></span>
                 <span th:text="#{map.colored.preference}" class="checkbox-label">Show map in color</span>
             </label>
-            <small th:text="#{map.colored.preference.description}" class="form-description">When enabled, the map will be displayed in full color. When disabled, the map will be shown in grayscale.</small>
+            <p th:text="#{map.colored.preference.description}" class="form-description">When enabled, the map will be displayed in full color. When disabled, the map will be shown in grayscale.</p>
+        </div>
+        <div class="separator"></div>
+        <div class="form-group">
+            <h3 th:text="#{users.home.location.label}">Home Location</h3>
+            <p class="form-description" th:text="#{users.home.location.description}">Set your home location. This location will be displayed when no data is available for the selected date.</p>
+            <div class="home-location-inputs">
+                <div class="coordinate-input">
+                    <label for="homeLatitude" th:text="#{users.home.latitude.label}">Latitude</label>
+                    <input type="number" 
+                           id="homeLatitude" 
+                           name="homeLatitude" 
+                           step="any" 
+                           min="-90" 
+                           max="90"
+                           th:value="${homeLatitude}"
+                           th:placeholder="#{users.home.latitude.placeholder}"
+                           onchange="updateMapMarker()">
+                </div>
+                <div class="coordinate-input">
+                    <label for="homeLongitude" th:text="#{users.home.longitude.label}">Longitude</label>
+                    <input type="number" 
+                           id="homeLongitude" 
+                           name="homeLongitude" 
+                           step="any" 
+                           min="-180" 
+                           max="180"
+                           th:value="${homeLongitude}"
+                           th:placeholder="#{users.home.longitude.placeholder}"
+                           onchange="updateMapMarker()">
+                </div>
+                <button type="button" 
+                        class="btn"
+                        onclick="clearHomeLocation()"
+                        th:text="#{users.home.location.clear}">Clear</button>
+            </div>
+            
+            <div id="homeLocationMap" class="home-location-map"></div>
         </div>
         <div class="separator"></div>
         <div id="connected-accounts-container"
@@ -273,6 +310,7 @@
         </div>
     </div>
 </div>
+
 
 
 </body>

@@ -39,8 +39,8 @@
                class="settings-nav-item"
                th:classappend="${activeSection == 'api-tokens'} ? 'active' : ''"
                th:text="#{settings.api.tokens}">API Tokens</a>
-            
-            <a href="/settings?section=user-management" 
+
+            <a href="/settings?section=user-management"
                class="settings-nav-item"
                th:classappend="${activeSection == 'user-management'} ? 'active' : ''"
                th:text="#{settings.user.management}">User Management</a>
@@ -191,16 +191,6 @@
                 event.detail.target.closest('#places-management')) {
                 initPlaceMaps();
             }
-
-            // Handle form resets after successful submission
-            if (event.detail.target.id === 'user-management' ||
-                event.detail.target.closest('#user-management')) {
-                // Find and reset any forms in the user management section
-                const forms = event.detail.target.querySelectorAll('form');
-                forms.forEach(form => {
-                    form.reset();
-                });
-            }
         });
 
         // Navigation is now handled server-side via URL parameters
@@ -221,7 +211,9 @@
                 });
             }
             initPlaceMaps();
-
+            if (document.querySelector('#homeLocationMap')) {
+                setTimeout(initializeHomeLocationMap, 100);
+            }
             // Function to enable all upload buttons and hide spinners
             function enableAllUploads() {
                 const uploadButtons = document.querySelectorAll('.upload-btn');
@@ -266,6 +258,148 @@
                 }
             });
         });
+
+        // Home location map functionality
+        let homeLocationMap;
+        let homeLocationMarker;
+
+        function initializeHomeLocationMap() {
+            if (typeof L === 'undefined') {
+                console.error('Leaflet is not loaded');
+                return;
+            }
+            const tilesUrl = window.userSettings.tiles.service;
+            const tilesAttribution = window.userSettings.tiles.attribution;
+            const tileLayer = window.userSettings.preferColoredMap ? L.tileLayer : L.tileLayer.grayscale;
+
+            // Initialize map
+            homeLocationMap = L.map('homeLocationMap').setView([60.1699, 24.9384], 10)
+            // Add tile layer
+            tileLayer(tilesUrl, {
+                attribution: tilesAttribution
+            }).addTo(homeLocationMap);
+
+            // Get current home location from form inputs
+            const latInput = document.getElementById('homeLatitude');
+            const lngInput = document.getElementById('homeLongitude');
+            
+            if (latInput && latInput.value && lngInput && lngInput.value) {
+                const lat = parseFloat(latInput.value);
+                const lng = parseFloat(lngInput.value);
+                
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    homeLocationMap.setView([lat, lng], 13);
+                    // Create marker
+                    homeLocationMarker = L.circleMarker([lat, lng], {
+                        radius: 15,
+                        fillColor: '#ff6c00',
+                        color: '#fff',
+                        weight: 1,
+                        opacity: 1,
+                        fillOpacity: 0.8,
+                        draggable: true
+                    }).addTo(homeLocationMap);
+
+                    homeLocationMarker.on('dragend', function(e) {
+                        const position = e.target.getLatLng();
+                        updateCoordinateInputs(position.lat, position.lng);
+                    });
+                }
+            }
+            
+            // Add click event to map
+            homeLocationMap.on('click', function(e) {
+                const lat = e.latlng.lat;
+                const lng = e.latlng.lng;
+                
+                if (homeLocationMarker) {
+                    homeLocationMap.removeLayer(homeLocationMarker);
+                }
+
+                homeLocationMarker = L.circleMarker([lat, lng], {
+                    radius: 15,
+                    fillColor: '#ff6c00',
+                    color: '#fff',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8,
+                    draggable: true
+                }).addTo(homeLocationMap);
+                updateCoordinateInputs(lat, lng);
+                
+                homeLocationMarker.on('dragend', function(e) {
+                    const position = e.target.getLatLng();
+                    updateCoordinateInputs(position.lat, position.lng);
+                });
+            });
+        }
+
+        function updateCoordinateInputs(lat, lng) {
+            const latInput = document.getElementById('homeLatitude');
+            const lngInput = document.getElementById('homeLongitude');
+            if (latInput && lngInput) {
+                latInput.value = lat.toFixed(6);
+                lngInput.value = lng.toFixed(6);
+            }
+        }
+
+        window.updateMapMarker = function() {
+            if (!homeLocationMap) return;
+            
+            const latInput = document.getElementById('homeLatitude');
+            const lngInput = document.getElementById('homeLongitude');
+            
+            if (!latInput || !lngInput) return;
+            
+            const lat = parseFloat(latInput.value);
+            const lng = parseFloat(lngInput.value);
+            
+            if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+                if (homeLocationMarker) {
+                    homeLocationMap.removeLayer(homeLocationMarker);
+                }
+
+                homeLocationMarker = L.circleMarker([lat, lng], {
+                    radius: 15,
+                    fillColor: '#ff6c00',
+                    color: '#fff',
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8,
+                    draggable: true
+                }).addTo(homeLocationMap);
+                homeLocationMap.setView([lat, lng], 13);
+                
+                homeLocationMarker.on('dragend', function(e) {
+                    const position = e.target.getLatLng();
+                    updateCoordinateInputs(position.lat, position.lng);
+                });
+            } else if (homeLocationMarker) {
+                homeLocationMap.removeLayer(homeLocationMarker);
+                homeLocationMarker = null;
+            }
+        }
+
+        window.clearHomeLocation = function() {
+            const latInput = document.getElementById('homeLatitude');
+            const lngInput = document.getElementById('homeLongitude');
+            
+            if (latInput) latInput.value = '';
+            if (lngInput) lngInput.value = '';
+            
+            if (homeLocationMarker && homeLocationMap) {
+                homeLocationMap.removeLayer(homeLocationMarker);
+                homeLocationMarker = null;
+            }
+        }
+
+        // Initialize home location map when user management section loads
+        document.body.addEventListener('htmx:afterSettle', function(evt) {
+            if (evt.detail.target.querySelector && evt.detail.target.querySelector('#homeLocationMap')) {
+                setTimeout(initializeHomeLocationMap, 100);
+            }
+        });
     </script>
+
 </body>
 </html>

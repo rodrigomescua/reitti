@@ -76,10 +76,16 @@
     };
 
     window.userSettings = /*[[${userSettings}]]*/ {}
-    // Helper function for HTMX to get current selected date
+
     function getSelectedDate() {
         const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get('date') || new Date().toISOString().split('T')[0];
+        if (urlParams.has('date')) {
+            return urlParams.get('date');
+        } else if (window.userSettings.newestData) {
+            return window.userSettings.newestData.split('T')[0];
+        } else {
+            return new Date().toISOString().split('T')[0];
+        }
     }
     // Helper function for HTMX to get user timezone
     function getUserTimezone() {
@@ -129,6 +135,10 @@
             }
         }
 
+        if (!initialDate && window.userSettings.newestData) {
+            initialDate = window.userSettings.newestData.split('T')[0]
+        }
+
         // Set date picker to URL date or today's date
         const today = new Date();
         const formattedDate = initialDate || today.toISOString().split('T')[0]; // YYYY-MM-DD format
@@ -140,8 +150,9 @@
             window.history.pushState({}, '', url);
         }
 
+
         // Initialize the map
-        const map = L.map('map', {zoomControl: false, attributionControl: false}).setView([60.1699, 24.9384], 12); // Helsinki coordinates as default
+        const map = L.map('map', {zoomControl: false, attributionControl: false}).setView([window.userSettings.homeLatitude, window.userSettings.homeLongitude], 12);
 
         const tilesUrl = window.userSettings.tiles.service;
         const tilesAttribution = window.userSettings.tiles.attribution;
