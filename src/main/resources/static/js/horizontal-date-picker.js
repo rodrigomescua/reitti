@@ -130,7 +130,7 @@ class HorizontalDatePicker {
                 this._isManualSelection = true;
 
                 // Force selection of the clicked date
-                this.selectDate(dateItem, true);
+                this.selectDateItem(dateItem, true);
             
                 // Reset the manual selection flag after a delay
                 setTimeout(() => {
@@ -232,7 +232,7 @@ class HorizontalDatePicker {
                     this._isManualSelection = true;
 
                     // Force selection of the tapped date
-                    this.selectDate(dateItem, true);
+                    this.selectDateItem(dateItem, true);
                     
                     // Reset the manual selection flag after a delay
                     setTimeout(() => {
@@ -424,8 +424,8 @@ class HorizontalDatePicker {
         
         return dateItem;
     }
-    
-    selectDate(dateItem, isManualSelection = false) {
+
+    selectDateItem(dateItem, isManualSelection = false) {
         // Check if date is within min/max range, but only if they are set
         const dateToSelect = this.parseDate(dateItem.dataset.date);
         
@@ -446,6 +446,14 @@ class HorizontalDatePicker {
         // If we're already selecting this date and it's not a manual selection, skip
         if (this.selectedElement === dateItem && !isManualSelection) {
             return;
+        }
+
+        // If this is a manual selection and auto-update mode is active, disable it
+        if (isManualSelection && window.autoUpdateMode) {
+            console.log('Manual date selection detected, disabling auto-update mode');
+            if (typeof window.disableAutoUpdate === 'function') {
+                window.disableAutoUpdate();
+            }
         }
         
         // Clear any existing selection
@@ -498,7 +506,7 @@ class HorizontalDatePicker {
         // For manual selections, call the callback immediately
         if (isManualSelection) {
             if (typeof this.options.onDateSelect === 'function') {
-                this.options.onDateSelect(dateToSelect, dateItem.dataset.date);
+                this.options.onDateSelect(dateToSelect, dateItem.dataset.date, true);
             }
             
             // Dispatch custom event
@@ -824,6 +832,14 @@ class HorizontalDatePicker {
     
     // Select a month
     selectMonth(year, month) {
+        // If auto-update mode is active, disable it for manual month selection
+        if (window.autoUpdateMode) {
+            console.log('Manual month selection detected, disabling auto-update mode');
+            if (typeof window.disableAutoUpdate === 'function') {
+                window.disableAutoUpdate();
+            }
+        }
+
         // Get the current day from the selected date
         const currentDay = this.options.selectedDate.getDate();
         
@@ -862,7 +878,7 @@ class HorizontalDatePicker {
             
             for (const item of dateItems) {
                 if (item.dataset.date === formattedExactDate) {
-                    this.selectDate(item, true);
+                    this.selectDateItem(item, true);
                     break;
                 }
             }
@@ -874,7 +890,7 @@ class HorizontalDatePicker {
         // Call onDateSelect callback if provided
         const formattedDate = this.formatDate(exactSelectedDate);
         if (typeof this.options.onDateSelect === 'function') {
-            this.options.onDateSelect(exactSelectedDate, formattedDate);
+            this.options.onDateSelect(exactSelectedDate, formattedDate, false);
         }
         
         // Dispatch custom event
@@ -889,6 +905,14 @@ class HorizontalDatePicker {
     
     // Select a year
     selectYear(year) {
+        // If auto-update mode is active, disable it for manual year selection
+        if (window.autoUpdateMode) {
+            console.log('Manual year selection detected, disabling auto-update mode');
+            if (typeof window.disableAutoUpdate === 'function') {
+                window.disableAutoUpdate();
+            }
+        }
+
         // Get the current month and day from the selected date
         const currentDate = new Date(this.options.selectedDate);
         
@@ -930,7 +954,7 @@ class HorizontalDatePicker {
             
             for (const item of dateItems) {
                 if (item.dataset.date === formattedExactDate) {
-                    this.selectDate(item, true);
+                    this.selectDateItem(item, true);
                     break;
                 }
             }
@@ -942,7 +966,7 @@ class HorizontalDatePicker {
         // Call onDateSelect callback if provided
         const formattedDate = this.formatDate(exactSelectedDate);
         if (typeof this.options.onDateSelect === 'function') {
-            this.options.onDateSelect(exactSelectedDate, formattedDate);
+            this.options.onDateSelect(exactSelectedDate, formattedDate, false);
         }
         
         // Dispatch custom event
@@ -1044,7 +1068,8 @@ class HorizontalDatePicker {
         if (this.options.showMonthRow) {
             this.highlightSelectedMonth();
         }
-        
+
+
         // Find and mark the selected date element
         setTimeout(() => {
             const dateItems = this.dateContainer.querySelectorAll('.date-item');
@@ -1060,9 +1085,20 @@ class HorizontalDatePicker {
                     break;
                 }
             }
-            
+
+            if (typeof this.options.onDateSelect === 'function') {
+                this.options.onDateSelect(today, formattedDate, false);
+            }
             // Center the selected date
             this.scrollToSelectedDate(false);
+            const event = new CustomEvent('dateSelected', {
+                detail: {
+                    date: newDate,
+                    formattedDate: formattedDate
+                }
+            });
+            this.element.dispatchEvent(event);
+
         }, 0);
     }
     
@@ -1084,7 +1120,7 @@ class HorizontalDatePicker {
         // Call onDateSelect callback
         const formattedDate = this.formatDate(today);
         if (typeof this.options.onDateSelect === 'function') {
-            this.options.onDateSelect(today, formattedDate);
+            this.options.onDateSelect(today, formattedDate, true);
         }
         
         // Dispatch custom event

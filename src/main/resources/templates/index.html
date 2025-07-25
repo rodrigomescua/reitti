@@ -31,6 +31,7 @@
         <span><img class="logo" th:src="@{/img/logo.png}" alt="reitti logo" title="reitti" src="/img/logo.png"></span>
         <a href="/statistics" class="nav-link" th:title="#{nav.statistics}"><i class="lni lni-bar-chart-4"></i></a>
         <a href="/settings" class="nav-link" th:title="#{nav.settings.tooltip}"><i class="lni lni-gear-1"></i></a>
+        <a type="button" class="nav-link" id="auto-update-btn" onclick="toggleAutoUpdate()" title="Auto Update"><i class="lni lni-play"></i></a>
         <a type="button" class="nav-link" onclick="toggleFullscreen()" title="Toggle Fullscreen"><i class="lni lni-arrow-all-direction"></i></a>
         <form th:action="@{/logout}" method="post" >
             <button type="submit" class="nav-link" style="font-size: 1.4rem;" th:title="#{nav.logout.tooltip}"><i
@@ -79,10 +80,22 @@
         ],
         sse: {
             error: /*[[#{sse.error.connection-lost}]]*/ 'Connection to server lost! Will reconnect ...',
+        },
+        autoupdate: {
+          latestLocation:  /*[[#{map.auto-update.latest-location}]]*/ 'Latest location',
         }
     };
 
     window.userSettings = /*[[${userSettings}]]*/ {}
+
+    const messagesDiv = document.getElementById('sse-message');    let autoUpdateMode = false;
+    let autoUpdateTimer = null;
+    let eventSource = null;
+    let reloadTimeoutId = null;
+    let pendingEvents = [];
+
+    // Initialize the map
+    const map = L.map('map', {zoomControl: false, attributionControl: false}).setView([window.userSettings.homeLatitude, window.userSettings.homeLongitude], 12);
 
     function getSelectedDate() {
         const urlParams = new URLSearchParams(window.location.search);
@@ -129,6 +142,8 @@
         zoomSnap: 0.1
     };
 
+    let pulsatingMarkers = [];
+
     document.addEventListener('DOMContentLoaded', function () {
         // Check if date is in URL parameters
         const urlParams = new URLSearchParams(window.location.search);
@@ -158,9 +173,6 @@
         }
 
 
-        // Initialize the map
-        const map = L.map('map', {zoomControl: false, attributionControl: false}).setView([window.userSettings.homeLatitude, window.userSettings.homeLongitude], 12);
-
         const tilesUrl = window.userSettings.tiles.service;
         const tilesAttribution = window.userSettings.tiles.attribution;
 
@@ -183,6 +195,8 @@
         function loadTimelineData(date) {
             // Load photos for the selected date
             photoClient.updatePhotosForDate(date, getUserTimezone());
+            // Remove pulsating markers when loading new data
+            removePulsatingMarkers();
             // Get raw location points URL from timeline container
             const timelineContainer = document.querySelectorAll('.user-timeline-section');
             for (const path of rawPointPaths) {
@@ -230,6 +244,12 @@
                 rawPointsPath.setLatLngs(rawPointsCoords);
                 rawPointsPath.addTo(map);
                 rawPointPaths.push(rawPointsPath)
+                
+                // Add pulsating marker for the latest point if in auto-update mode and today is selected
+                if (autoUpdateMode && isSelectedDateToday() && rawPointsData.points.length > 0) {
+                    const latestPoint = rawPointsData.points[rawPointsData.points.length - 1];
+                    addPulsatingMarker(latestPoint.latitude, latestPoint.longitude, color);
+                }
             }
         }
 
@@ -445,7 +465,7 @@
         }
 
         // Initialize horizontal date picker
-        new HorizontalDatePicker({
+        window.horizontalDatePicker = new HorizontalDatePicker({
             container: document.getElementById('horizontal-date-picker-container'),
             selectedDate: dateToUse,
             showNavButtons: false, // Show navigation buttons
@@ -456,20 +476,196 @@
             allowFutureDates: false, // Disable selection of future dates
             showTodayButton: true, // Show the Today button
             // No min/max date for infinite scrolling
-            onDateSelect: (date, formattedDate) => {
+            onDateSelect: (date, formattedDate, isManualSelected) => {
                 // Update URL
                 updateUrlWithDate(formattedDate);
                 // Trigger HTMX reload of timeline
                 document.body.dispatchEvent(new CustomEvent('dateChanged'));
-            },
-            onDateDeselect: () => {
-                // Clear photos when no date is selected
-                photoClient.clearPhotos();
+                if (isManualSelected) {
+                    disableAutoUpdate();
+                }
             }
         });
     });
 
-    // Fullscreen functionality
+
+    function toggleAutoUpdate() {
+        const btn = document.getElementById('auto-update-btn');
+        const icon = btn.querySelector('i');
+        
+        if (!autoUpdateMode) {
+            // Enable auto-update mode
+            autoUpdateMode = true;
+            icon.className = 'lni lni-pause';
+            btn.title = 'Pause Auto Update';
+            
+            // Update the date picker to today
+            if (window.horizontalDatePicker) {
+                window.horizontalDatePicker.setDate(new Date());
+            }
+
+            // Start the timer to check for date changes every 30 seconds
+            startAutoUpdateTimer();
+
+            eventSource = new EventSource('/events'); // Connect to your SSE endpoint
+
+            eventSource.onopen = function() {
+                console.log('SSE connection opened.');
+                messagesDiv.classList.remove('active')
+            };
+
+            // Listen for events with the name "message"
+            eventSource.addEventListener('message', function(event) {
+                console.log('Received message event:', event.data);
+            });
+
+
+            eventSource.onerror = function(error) {
+                console.error('EventSource failed:', error);
+                messagesDiv.innerHTML = `<p><strong>${window.locale.sse.error}</strong></p>`;
+                messagesDiv.classList.add('active')
+            };
+
+            eventSource.onmessage = function(event) {
+                console.log('Received generic event:', event.data);
+                
+                // Parse the event data
+                try {
+                    const eventData = JSON.parse(event.data);
+                    
+                    // Check if the event has a date field and it matches today
+                    if (eventData.date) {
+                        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+                        const eventDate = eventData.date;
+                        
+                        // If event date matches today and we're in auto-update mode, schedule reload
+                        if (eventDate === today && autoUpdateMode) {
+                            console.log('Auto-update: Scheduling timeline reload due to SSE event for today');
+                            scheduleTimelineReload(eventData);
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Could not parse SSE event data:', error);
+                }
+            };
+
+        } else {
+            // Disable auto-update mode
+            disableAutoUpdate();
+        }
+    }
+
+    function disableAutoUpdate() {
+        autoUpdateMode = false;
+        
+        // Clear the timer
+        if (autoUpdateTimer) {
+            clearInterval(autoUpdateTimer);
+            autoUpdateTimer = null;
+        }
+        
+        // Clear any pending reload timeout
+        if (reloadTimeoutId) {
+            clearTimeout(reloadTimeoutId);
+            reloadTimeoutId = null;
+        }
+        
+        // Clear pending events
+        pendingEvents = [];
+        
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+        }
+        
+        // Remove pulsating markers when auto-update is disabled
+        removePulsatingMarkers();
+        
+        const btn = document.getElementById('auto-update-btn');
+        const icon = btn.querySelector('i');
+        icon.className = 'lni lni-play';
+        btn.title = 'Auto Update';
+    }
+
+    function startAutoUpdateTimer() {
+        // Check every 30 seconds if we need to switch to today's date
+        autoUpdateTimer = setInterval(() => {
+            if (!autoUpdateMode) {
+                return; // Exit if auto-update mode was disabled
+            }
+            
+            const today = new Date();
+            const todayString = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+            const currentSelectedDate = getSelectedDate();
+            
+            // If the selected date is not today, switch to today
+            if (currentSelectedDate !== todayString) {
+                console.log('Auto-update: Switching to today\'s date');
+                if (window.horizontalDatePicker) {
+                    window.horizontalDatePicker.setDate(today);
+                }
+            }
+        }, 30000); // 30 seconds
+    }
+
+    function isSelectedDateToday() {
+        const today = new Date().toISOString().split('T')[0];
+        const selectedDate = getSelectedDate();
+        return selectedDate === today;
+    }
+
+    function addPulsatingMarker(lat, lng, color) {
+        // Create new pulsating marker
+        const cssIcon = L.divIcon({
+            // Specify a class name we can refer to in CSS.
+            className: 'css-icon',
+            html: `<div style="border-color: ${color || '#606060'}" class="gps_ring"></div>`
+            ,iconSize: [22,22]
+        });
+
+        const pulsatingMarker = L.marker([lat, lng], {icon: cssIcon}).addTo(map);
+
+        // Add tooltip
+        pulsatingMarker.bindTooltip(window.locale.autoupdate.latestLocation, {
+            permanent: false,
+            direction: 'top'
+        });
+
+        // Store the marker for cleanup later
+        pulsatingMarkers.push(pulsatingMarker);
+    }
+
+    function removePulsatingMarkers() {
+        pulsatingMarkers.forEach(marker => {
+            if (marker) {
+                map.removeLayer(marker);
+            }
+        });
+        pulsatingMarkers = [];
+    }
+
+    function scheduleTimelineReload(eventData) {
+        // Add event to pending events
+        pendingEvents.push(eventData);
+        
+        // Clear existing timeout if any
+        if (reloadTimeoutId) {
+            clearTimeout(reloadTimeoutId);
+        }
+        
+        // Schedule reload after 5 seconds of idle time
+        reloadTimeoutId = setTimeout(() => {
+            debugger
+            if (autoUpdateMode && pendingEvents.length > 0) {
+                console.log(`Auto-update: Reloading timeline data after ${pendingEvents.length} accumulated events`);
+                document.body.dispatchEvent(new CustomEvent('dateChanged'));
+                // Clear pending events
+                pendingEvents = [];
+            }
+            reloadTimeoutId = null;
+        }, 5000); // 5 seconds
+    }
+
     function toggleFullscreen() {
         if (!document.fullscreenElement) {
             document.documentElement.requestFullscreen().catch(err => {
