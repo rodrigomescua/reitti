@@ -76,7 +76,7 @@
         <div class="settings-content-area">
             <!-- API Tokens Section -->
             <div th:if="${activeSection == 'api-tokens'}" id="api-tokens" class="settings-section active">
-                <div th:replace="~{fragments/settings :: api-tokens-content}"></div>
+                <div th:replace="~{fragments/api-tokens :: api-tokens-content}"></div>
             </div>
 
             <!-- User Management Section -->
@@ -229,18 +229,18 @@
                 });
             }
 
-            // Listen for HTMX request start events on all upload forms
+            // Listen for HTMX request start events on actual file upload forms only
             document.body.addEventListener('htmx:beforeRequest', function(evt) {
                 const form = evt.target;
-                if (form.id && form.id.includes('upload-form')) {
+                if (form && form.id && typeof form.id === 'string' && form.id.includes('upload-form') && !form.id.includes('integration')) {
                     disableAllUploads();
                 }
             });
 
-            // Listen for HTMX request completion events
+            // Listen for HTMX request completion events on actual file upload forms only
             document.body.addEventListener('htmx:afterRequest', function(evt) {
                 const form = evt.target;
-                if (form.id && form.id.includes('upload-form')) {
+                if (form && form.id && typeof form.id === 'string' && form.id.includes('upload-form') && !form.id.includes('integration')) {
                     enableAllUploads();
                 }
             });
@@ -248,7 +248,7 @@
             // Handle progress events
             document.body.addEventListener('htmx:xhr:progress', function(evt) {
                 const form = evt.target;
-                if (form.id) {
+                if (form.id && typeof form.id === 'string' ) {
                     const progressId = form.id.replace('-upload-form', '').replace('-', '-');
                     const progressElement = document.getElementById('progress-' + progressId);
                     if (progressElement) {

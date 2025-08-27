@@ -42,4 +42,12 @@ public class ApiTokenService {
     public List<ApiToken> getTokensForUser(User currentUser) {
         return this.apiTokenJdbcService.findByUser(currentUser);
     }
+
+    public List<?> getRecentUsagesForUser(User user, int maxRows) {
+        return this.apiTokenJdbcService.getUsages(user, maxRows);
+    }
+
+    public void trackUsage(String token, String requestPath, String remoteIp) {
+        this.apiTokenJdbcService.trackUsage(token, requestPath, remoteIp);
+    }
 }
