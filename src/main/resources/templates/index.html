@@ -25,7 +25,17 @@
 </div>
 <div id="map"></div>
 
-
+<!-- Auto-update overlay -->
+<div id="auto-update-overlay" class="auto-update-overlay">
+    <button class="overlay-button exit-button" onclick="disableAutoUpdate()" title="Exit Auto Update">
+        <i class="lni lni-pause"></i>
+    </button>
+    <button class="overlay-button fullscreen-button" onclick="toggleFullscreen()" title="Toggle Fullscreen">
+        <i class="lni lni-arrow-all-direction"></i>
+    </button>
+    <div class="date" id="auto-update-date"></div>
+    <div class="time" id="auto-update-time"></div>
+</div>
 
 <div class="timeline">
     <div class="timeline-header">
@@ -91,6 +101,7 @@
 
     const messagesDiv = document.getElementById('sse-message');    let autoUpdateMode = false;
     let autoUpdateTimer = null;
+    let autoUpdateTimeInterval = null;
     let eventSource = null;
     let reloadTimeoutId = null;
     let pendingEvents = [];
@@ -503,6 +514,12 @@
             icon.className = 'lni lni-pause';
             btn.title = 'Pause Auto Update';
             
+            // Hide timeline and date picker smoothly
+            hideUIElements();
+            
+            // Show auto-update overlay
+            showAutoUpdateOverlay();
+            
             // Update the date picker to today
             if (window.horizontalDatePicker) {
                 window.horizontalDatePicker.setDate(new Date());
@@ -568,6 +585,12 @@
             autoUpdateTimer = null;
         }
         
+        // Clear time update interval
+        if (autoUpdateTimeInterval) {
+            clearInterval(autoUpdateTimeInterval);
+            autoUpdateTimeInterval = null;
+        }
+        
         // Clear any pending reload timeout
         if (reloadTimeoutId) {
             clearTimeout(reloadTimeoutId);
@@ -584,6 +607,12 @@
         
         // Remove pulsating markers when auto-update is disabled
         removePulsatingMarkers();
+        
+        // Hide auto-update overlay
+        hideAutoUpdateOverlay();
+        
+        // Show timeline and date picker again
+        showUIElements();
         
         const btn = document.getElementById('auto-update-btn');
         const icon = btn.querySelector('i');
@@ -668,6 +697,66 @@
             }
             reloadTimeoutId = null;
         }, 5000); // 5 seconds
+    }
+
+    function hideUIElements() {
+        const timeline = document.querySelector('.timeline');
+        const datePicker = document.getElementById('horizontal-date-picker-container');
+        
+        timeline.classList.add('hidden');
+        datePicker.classList.add('hidden');
+    }
+
+    function showUIElements() {
+        const timeline = document.querySelector('.timeline');
+        const datePicker = document.getElementById('horizontal-date-picker-container');
+        
+        timeline.classList.remove('hidden');
+        datePicker.classList.remove('hidden');
+    }
+
+    function showAutoUpdateOverlay() {
+        const overlay = document.getElementById('auto-update-overlay');
+        
+        // Update initial time
+        updateAutoUpdateTime();
+        
+        // Show overlay
+        overlay.classList.add('visible');
+        
+        // Start updating time every second
+        autoUpdateTimeInterval = setInterval(updateAutoUpdateTime, 1000);
+    }
+
+    function hideAutoUpdateOverlay() {
+        const overlay = document.getElementById('auto-update-overlay');
+        overlay.classList.remove('visible');
+    }
+
+    function updateAutoUpdateTime() {
+        const now = new Date();
+        const dateElement = document.getElementById('auto-update-date');
+        const timeElement = document.getElementById('auto-update-time');
+        
+        // Use browser locale for date formatting
+        const dateOptions = { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        };
+        const formattedDate = now.toLocaleDateString(navigator.language, dateOptions);
+        
+        // Use browser locale for time formatting
+        const timeOptions = { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: false
+        };
+        const formattedTime = now.toLocaleTimeString(navigator.language, timeOptions);
+        
+        dateElement.textContent = formattedDate;
+        timeElement.textContent = formattedTime;
     }
 
     function toggleFullscreen() {
