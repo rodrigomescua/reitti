@@ -9,8 +9,8 @@ import com.dedicatedcode.reitti.service.*;
 import com.dedicatedcode.reitti.service.integration.ImmichIntegrationService;
 import com.dedicatedcode.reitti.service.integration.OwnTracksRecorderIntegrationService;
 import com.dedicatedcode.reitti.service.processing.ProcessingPipelineTrigger;
+import com.dedicatedcode.reitti.repository.GeocodingResponseJdbcService;
 import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpSession;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSource;
@@ -36,6 +36,7 @@ public class SettingsController {
     private final PlaceService placeService;
     private final SignificantPlaceJdbcService placeJdbcService;
     private final GeocodeServiceJdbcService geocodeServiceJdbcService;
+    private final GeocodingResponseJdbcService geocodingResponseJdbcService;
     private final ImmichIntegrationService immichIntegrationService;
     private final OwnTracksRecorderIntegrationService ownTracksRecorderIntegrationService;
     private final VisitJdbcService visitJdbcService;
@@ -60,6 +61,7 @@ public class SettingsController {
                               QueueStatsService queueStatsService,
                               PlaceService placeService, SignificantPlaceJdbcService placeJdbcService,
                               GeocodeServiceJdbcService geocodeServiceJdbcService,
+                              GeocodingResponseJdbcService geocodingResponseJdbcService,
                               ImmichIntegrationService immichIntegrationService,
                               OwnTracksRecorderIntegrationService ownTracksRecorderIntegrationService,
                               VisitJdbcService visitJdbcService,
@@ -80,6 +82,7 @@ public class SettingsController {
         this.placeService = placeService;
         this.placeJdbcService = placeJdbcService;
         this.geocodeServiceJdbcService = geocodeServiceJdbcService;
+        this.geocodingResponseJdbcService = geocodingResponseJdbcService;
         this.immichIntegrationService = immichIntegrationService;
         this.ownTracksRecorderIntegrationService = ownTracksRecorderIntegrationService;
         this.visitJdbcService = visitJdbcService;
@@ -163,7 +166,7 @@ public class SettingsController {
                         place.getId(),
                         place.getName(),
                         place.getAddress(),
-                        place.getCategory(),
+                        place.getType(),
                         place.getLatitudeCentroid(),
                         place.getLongitudeCentroid()
                 ))
@@ -174,6 +177,7 @@ public class SettingsController {
         model.addAttribute("totalPages", placesPage.getTotalPages());
         model.addAttribute("places", places);
         model.addAttribute("isEmpty", places.isEmpty());
+        model.addAttribute("placeTypes", SignificantPlace.PlaceType.values());
 
         return "fragments/settings :: places-content";
     }
@@ -226,37 +230,54 @@ public class SettingsController {
 
 
     @PostMapping("/places/{placeId}/update")
-    @ResponseBody
-    public Map<String, Object> updatePlace(@PathVariable Long placeId,
-                                           @RequestParam String name,
-                                           Authentication authentication) {
+    public String updatePlace(@PathVariable Long placeId,
+                              @RequestParam String name,
+                              @RequestParam(required = false) String address,
+                              @RequestParam(required = false) String type,
+                              @RequestParam(defaultValue = "0") int page,
+                              Authentication authentication,
+                              Model model) {
 
         User user = (User) authentication.getPrincipal();
-        Map<String, Object> response = new HashMap<>();
         if (this.placeJdbcService.exists(user, placeId)) {
             try {
                 SignificantPlace significantPlace = placeJdbcService.findById(placeId).orElseThrow();
-                placeJdbcService.update(significantPlace.withName(name));
+                SignificantPlace updatedPlace = significantPlace.withName(name);
 
-                response.put("message", getMessage("message.success.place.updated"));
-                response.put("success", true);
+                // Update address if provided
+                if (address != null) {
+                    updatedPlace = updatedPlace.withAddress(address.trim().isEmpty() ? null : address.trim());
+                }
+
+                if (type != null && !type.isEmpty()) {
+                    try {
+                        SignificantPlace.PlaceType placeType = SignificantPlace.PlaceType.valueOf(type);
+                        updatedPlace = updatedPlace.withType(placeType);
+                    } catch (IllegalArgumentException e) {
+                        model.addAttribute("errorMessage", getMessage("message.error.place.update", "Invalid place type"));
+                        return getPlacesContent(user, page, model);
+                    }
+                }
+
+                placeJdbcService.update(updatedPlace);
+                model.addAttribute("successMessage", getMessage("message.success.place.updated"));
             } catch (Exception e) {
-                response.put("message", getMessage("message.error.place.update", e.getMessage()));
-                response.put("success", false);
+                model.addAttribute("errorMessage", getMessage("message.error.place.update", e.getMessage()));
             }
         } else {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
-        return response;
+        
+        return getPlacesContent(user, page, model);
     }
 
     @PostMapping("/places/{placeId}/geocode")
-    @ResponseBody
-    public Map<String, Object> geocodePlace(@PathVariable Long placeId,
-                                            Authentication authentication) {
+    public String geocodePlace(@PathVariable Long placeId,
+                               @RequestParam(defaultValue = "0") int page,
+                               Authentication authentication,
+                               Model model) {
 
         User user = (User) authentication.getPrincipal();
-        Map<String, Object> response = new HashMap<>();
         if (this.placeJdbcService.exists(user, placeId)) {
             try {
                 SignificantPlace significantPlace = placeJdbcService.findById(placeId).orElseThrow();
@@ -273,16 +294,54 @@ public class SettingsController {
                 );
                 rabbitTemplate.convertAndSend(RabbitMQConfig.SIGNIFICANT_PLACE_QUEUE, event);
 
-                response.put("message", getMessage("places.geocode.success"));
-                response.put("success", true);
+                model.addAttribute("successMessage", getMessage("places.geocode.success"));
             } catch (Exception e) {
-                response.put("message", getMessage("places.geocode.error", e.getMessage()));
-                response.put("success", false);
+                model.addAttribute("errorMessage", getMessage("places.geocode.error", e.getMessage()));
             }
         } else {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
-        return response;
+        
+        return getPlacesContent(user, page, model);
+    }
+
+    @GetMapping("/places/{placeId}/geocoding-response")
+    public String getGeocodingResponse(@PathVariable Long placeId,
+                                       @RequestParam(defaultValue = "0") int page,
+                                       Authentication authentication,
+                                       Model model) {
+
+        User user = (User) authentication.getPrincipal();
+        if (!this.placeJdbcService.exists(user, placeId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        }
+
+        try {
+            SignificantPlace place = placeJdbcService.findById(placeId).orElseThrow();
+            
+            // Convert to PlaceInfo for the template
+            PlaceInfo placeInfo = new PlaceInfo(
+                place.getId(),
+                place.getName(),
+                place.getAddress(),
+                place.getType(),
+                place.getLatitudeCentroid(),
+                place.getLongitudeCentroid()
+            );
+            
+            // Get all geocoding responses for this place
+            List<GeocodingResponse> geocodingResponses = geocodingResponseJdbcService.findBySignificantPlace(place);
+            
+            model.addAttribute("place", placeInfo);
+            model.addAttribute("currentPage", page);
+            model.addAttribute("geocodingResponses", geocodingResponses);
+            
+        } catch (Exception e) {
+            model.addAttribute("errorMessage", getMessage("message.error.place.update", e.getMessage()));
+            return getPlacesContent(user, page, model);
+        }
+        
+        return "fragments/settings :: geocoding-response-content";
     }
 
     @GetMapping("/queue-stats-content")
@@ -409,8 +468,7 @@ public class SettingsController {
                                                   @RequestParam String deviceId,
                                                   @RequestParam(defaultValue = "false") boolean enabled,
                                                   Authentication authentication,
-                                                  Model model,
-                                                  HttpServletRequest request) {
+                                                  Model model) {
         String currentUsername = authentication.getName();
         User currentUser = userJdbcService.findByUsername(currentUsername)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + currentUsername));
@@ -424,22 +482,7 @@ public class SettingsController {
         } else {
             model.addAttribute("hasToken", false);
         }
-        
-        // Build the server URL
-        String scheme = request.getScheme();
-        String serverName = request.getServerName();
-        int serverPort = request.getServerPort();
 
-        StringBuilder serverUrl = new StringBuilder();
-        serverUrl.append(scheme).append("://").append(serverName);
-
-        if ((scheme.equals("http") && serverPort != 80) ||
-                (scheme.equals("https") && serverPort != 443)) {
-            serverUrl.append(":").append(serverPort);
-        }
-
-        model.addAttribute("serverUrl", serverUrl.toString());
-        
         try {
             OwnTracksRecorderIntegration integration = ownTracksRecorderIntegrationService.saveIntegration(
                 currentUser, baseUrl, username, deviceId, enabled);

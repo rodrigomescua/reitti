@@ -92,13 +92,28 @@ public class TimelineController {
     public String getPlaceEditForm(@PathVariable Long id, Model model) {
         SignificantPlace place = placeService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         model.addAttribute("place", place);
+        model.addAttribute("placeTypes", SignificantPlace.PlaceType.values());
         return "fragments/place-edit :: edit-form";
     }
 
     @PutMapping("/places/{id}")
-    public String updatePlace(@PathVariable Long id, @RequestParam String name, Model model) {
+    public String updatePlace(@PathVariable Long id, 
+                              @RequestParam String name, 
+                              @RequestParam(required = false) String type, 
+                              Model model) {
         SignificantPlace place = placeService.findById(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        model.addAttribute("place", placeService.update(place.withName(name)));
+        SignificantPlace updatedPlace = place.withName(name);
+        
+        if (type != null && !type.isEmpty()) {
+            try {
+                SignificantPlace.PlaceType placeType = SignificantPlace.PlaceType.valueOf(type);
+                updatedPlace = updatedPlace.withType(placeType);
+            } catch (IllegalArgumentException e) {
+                // Invalid place type, ignore and just update name
+            }
+        }
+        
+        model.addAttribute("place", placeService.update(updatedPlace));
         return "fragments/place-edit :: view-mode";
     }
 
