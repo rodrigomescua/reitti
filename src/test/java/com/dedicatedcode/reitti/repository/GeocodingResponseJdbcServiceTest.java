@@ -1,5 +1,6 @@
 package com.dedicatedcode.reitti.repository;
 
+import com.dedicatedcode.reitti.IntegrationTest;
 import com.dedicatedcode.reitti.TestingService;
 import com.dedicatedcode.reitti.model.GeocodingResponse;
 import com.dedicatedcode.reitti.model.SignificantPlace;
@@ -17,7 +18,7 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-@SpringBootTest
+@IntegrationTest
 @ActiveProfiles("test")
 @Transactional
 class GeocodingResponseJdbcServiceTest {
@@ -26,7 +27,6 @@ class GeocodingResponseJdbcServiceTest {
     private GeocodingResponseJdbcService geocodingResponseJdbcService;
     @Autowired
     private SignificantPlaceJdbcService placeService;
-
     @Autowired
     private GeometryFactory geometryFactory;
 
@@ -40,7 +40,7 @@ class GeocodingResponseJdbcServiceTest {
         double latitudeCentroid = 53.863149;
         double longitudeCentroid = 10.700927;
         Point point = geometryFactory.createPoint(new Coordinate(longitudeCentroid, latitudeCentroid));
-        SignificantPlace place = placeService.create(testingService.admin(), SignificantPlace.create(latitudeCentroid, longitudeCentroid, point));
+        SignificantPlace place = placeService.create(testingService.admin(), SignificantPlace.create(latitudeCentroid, longitudeCentroid));
         
         GeocodingResponse response = new GeocodingResponse(
             place.getId(),
@@ -72,7 +72,7 @@ class GeocodingResponseJdbcServiceTest {
         double latitudeCentroid = 53.863149;
         double longitudeCentroid = 10.700927;
         Point point = geometryFactory.createPoint(new Coordinate(longitudeCentroid, latitudeCentroid));
-        SignificantPlace place = placeService.create(testingService.admin(), SignificantPlace.create(latitudeCentroid, longitudeCentroid, point));
+        SignificantPlace place = placeService.create(testingService.admin(), SignificantPlace.create(latitudeCentroid, longitudeCentroid));
 
         // When
         List<GeocodingResponse> found = geocodingResponseJdbcService.findBySignificantPlace(place);
@@ -88,7 +88,7 @@ class GeocodingResponseJdbcServiceTest {
         double latitudeCentroid = 53.863149;
         double longitudeCentroid = 10.700927;
         Point point = geometryFactory.createPoint(new Coordinate(longitudeCentroid, latitudeCentroid));
-        SignificantPlace place = placeService.create(testingService.admin(), SignificantPlace.create(latitudeCentroid, longitudeCentroid, point));
+        SignificantPlace place = placeService.create(testingService.admin(), SignificantPlace.create(latitudeCentroid, longitudeCentroid));
 
         GeocodingResponse response = new GeocodingResponse(
             place.getId(),
