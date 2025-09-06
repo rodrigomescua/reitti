@@ -1,5 +1,6 @@
 package com.dedicatedcode.reitti.config;
 
+import com.dedicatedcode.reitti.model.Role;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,6 +23,12 @@ public class SecurityConfig {
     private UrlTokenAuthenticationFilter urlTokenAuthenticationFilter;
 
     @Autowired
+    private MagicLinkAuthenticationFilter magicLinkAuthenticationFilter;
+
+    @Autowired
+    private MagicLinkSessionValidationFilter magicLinkSessionValidationFilter;
+
+    @Autowired
     private CustomAuthenticationSuccessHandler customAuthenticationSuccessHandler;
 
     @Autowired(required = false)
@@ -31,13 +38,16 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/login").permitAll()
-                        .requestMatchers("/css/**", "/js/**", "/images/**").permitAll()
+                        .requestMatchers("/login", "/access", "/error").permitAll()
+                        .requestMatchers("/settings/**").hasAnyRole(Role.ADMIN.name(), Role.USER.name())
+                        .requestMatchers("/css/**", "/js/**", "/images/**", "/img/**", "/error/magic-link/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .requestMatchers("/api/v1/reitti-integration/notify/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(bearerTokenAuthFilter, AuthorizationFilter.class)
+                .addFilterBefore(magicLinkSessionValidationFilter, AuthorizationFilter.class)
+                .addFilterBefore(magicLinkAuthenticationFilter, MagicLinkSessionValidationFilter.class)
+                .addFilterBefore(bearerTokenAuthFilter, MagicLinkAuthenticationFilter.class)
                 .addFilterBefore(urlTokenAuthenticationFilter, TokenAuthenticationFilter.class)
                 .csrf(AbstractHttpConfigurer::disable)
                 .formLogin(form -> form

@@ -2,8 +2,8 @@ package com.dedicatedcode.reitti.repository;
 
 import com.dedicatedcode.reitti.dto.LocationDataRequest;
 import com.dedicatedcode.reitti.model.UnitSystem;
-import com.dedicatedcode.reitti.model.User;
-import com.dedicatedcode.reitti.model.UserSettings;
+import com.dedicatedcode.reitti.model.security.User;
+import com.dedicatedcode.reitti.model.security.UserSettings;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
@@ -92,10 +92,6 @@ public class UserSettingsJdbcService {
     
     public UserSettings getOrCreateDefaultSettings(Long userId) {
         return findByUserId(userId).orElseGet(() -> save(UserSettings.defaultSettings(userId)));
-    }
-    
-    public void deleteByUserId(Long userId) {
-        jdbcTemplate.update("DELETE FROM user_settings WHERE user_id = ?", userId);
     }
     
     public void updateNewestData(User user, List<LocationDataRequest.LocationPoint> filtered) {

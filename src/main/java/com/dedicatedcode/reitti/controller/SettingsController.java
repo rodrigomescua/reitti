@@ -4,6 +4,16 @@ import com.dedicatedcode.reitti.config.RabbitMQConfig;
 import com.dedicatedcode.reitti.dto.PlaceInfo;
 import com.dedicatedcode.reitti.event.SignificantPlaceCreatedEvent;
 import com.dedicatedcode.reitti.model.*;
+import com.dedicatedcode.reitti.model.geo.RawLocationPoint;
+import com.dedicatedcode.reitti.model.geo.SignificantPlace;
+import com.dedicatedcode.reitti.model.geocoding.GeocodingResponse;
+import com.dedicatedcode.reitti.model.geocoding.RemoteGeocodeService;
+import com.dedicatedcode.reitti.model.integration.ImmichIntegration;
+import com.dedicatedcode.reitti.model.integration.OwnTracksRecorderIntegration;
+import com.dedicatedcode.reitti.model.security.ApiToken;
+import com.dedicatedcode.reitti.model.security.MagicLinkAccessLevel;
+import com.dedicatedcode.reitti.model.security.User;
+import com.dedicatedcode.reitti.model.security.UserSettings;
 import com.dedicatedcode.reitti.repository.*;
 import com.dedicatedcode.reitti.service.*;
 import com.dedicatedcode.reitti.service.integration.ImmichIntegrationService;
@@ -43,6 +53,7 @@ public class SettingsController {
     private final TripJdbcService tripJdbcService;
     private final ProcessedVisitJdbcService processedVisitJdbcService;
     private final RawLocationPointJdbcService rawLocationPointJdbcService;
+    private final MagicLinkJdbcService magicLinkJdbcService;
     private final RabbitTemplate rabbitTemplate;
     private final int maxErrors;
     private final boolean dataManagementEnabled;
@@ -67,7 +78,7 @@ public class SettingsController {
                               VisitJdbcService visitJdbcService,
                               TripJdbcService tripJdbcService,
                               ProcessedVisitJdbcService processedVisitJdbcService,
-                              RawLocationPointJdbcService rawLocationPointJdbcService,
+                              RawLocationPointJdbcService rawLocationPointJdbcService, MagicLinkJdbcService magicLinkJdbcService,
                               RabbitTemplate rabbitTemplate,
                               @Value("${reitti.geocoding.max-errors}") int maxErrors,
                               @Value("${reitti.data-management.enabled:false}") boolean dataManagementEnabled,
@@ -89,6 +100,7 @@ public class SettingsController {
         this.tripJdbcService = tripJdbcService;
         this.processedVisitJdbcService = processedVisitJdbcService;
         this.rawLocationPointJdbcService = rawLocationPointJdbcService;
+        this.magicLinkJdbcService = magicLinkJdbcService;
         this.rabbitTemplate = rabbitTemplate;
         this.maxErrors = maxErrors;
         this.dataManagementEnabled = dataManagementEnabled;
@@ -113,6 +125,9 @@ public class SettingsController {
         switch (section) {
             case "api-tokens":
                 getApiTokensContent(user, model);
+                break;
+            case "sharing":
+                getSharingContent(user, model);
                 break;
             case "user-management":
                 return getUserManagementPage(user, model);
@@ -156,6 +171,12 @@ public class SettingsController {
         return "fragments/api-tokens :: api-tokens-content";
     }
 
+    @GetMapping("/sharing-content")
+    public String getSharingContent(@AuthenticationPrincipal User user, Model model) {
+        model.addAttribute("tokens", this.magicLinkJdbcService.findByUser(user));
+        model.addAttribute("accessLevels", MagicLinkAccessLevel.values());
+        return "fragments/magic-links :: magic-links-content";
+    }
 
     @GetMapping("/places-content")
     public String getPlacesContent(@AuthenticationPrincipal User user,
