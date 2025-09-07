@@ -9,6 +9,7 @@ import com.dedicatedcode.reitti.repository.UserSettingsJdbcService;
 import com.dedicatedcode.reitti.service.AvatarService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.core.io.ClassPathResource;
@@ -28,7 +29,6 @@ import java.util.List;
 import java.util.Locale;
 
 import static com.dedicatedcode.reitti.model.Role.ADMIN;
-import static com.dedicatedcode.reitti.model.Role.USER;
 
 @Controller
 @RequestMapping("/settings")
@@ -40,6 +40,8 @@ public class UserSettingsController {
     private final LocaleResolver localeResolver;
     private final AvatarService avatarService;
     private final PasswordEncoder passwordEncoder;
+    private final boolean localLoginDisabled;
+    private final boolean oidcEnabled;
 
     // Avatar constraints
     private static final long MAX_AVATAR_SIZE = 2 * 1024 * 1024; // 2MB
@@ -55,13 +57,17 @@ public class UserSettingsController {
                                   MessageSource messageSource,
                                   LocaleResolver localeResolver,
                                   AvatarService avatarService,
-                                  PasswordEncoder passwordEncoder) {
+                                  PasswordEncoder passwordEncoder,
+                                  @Value("${reitti.security.local-login.disable}") boolean localLoginDisabled,
+                                  @Value("${reitti.security.oidc.enabled:false}") boolean oidcEnabled) {
         this.userJdbcService = userJdbcService;
         this.userSettingsJdbcService = userSettingsJdbcService;
         this.messageSource = messageSource;
         this.localeResolver = localeResolver;
         this.avatarService = avatarService;
         this.passwordEncoder = passwordEncoder;
+        this.localLoginDisabled = localLoginDisabled;
+        this.oidcEnabled = oidcEnabled;
     }
 
     private String getMessage(String key, Object... args) {
@@ -89,6 +95,10 @@ public class UserSettingsController {
             model.addAttribute("username", currentUser.getUsername());
             model.addAttribute("displayName", currentUser.getDisplayName());
             model.addAttribute("selectedRole", currentUser.getRole());
+            model.addAttribute("externallyManaged", currentUser.getExternalId() != null && oidcEnabled);
+            model.addAttribute("externalProfile", currentUser.getProfileUrl());
+            model.addAttribute("localLoginDisabled", localLoginDisabled);
+
             UserSettings userSettings = userSettingsJdbcService.findByUserId(currentUser.getId()).orElse(UserSettings.defaultSettings(currentUser.getId()));
             model.addAttribute("selectedLanguage", userSettings.getSelectedLanguage());
             model.addAttribute("selectedUnitSystem", userSettings.getUnitSystem().name());
@@ -154,9 +164,9 @@ public class UserSettingsController {
     }
 
     @PostMapping("/users")
-    public String createUser(@RequestParam String username,
-                             @RequestParam String displayName,
-                             @RequestParam String password,
+    public String createUser(@RequestParam(required = false) String username,
+                             @RequestParam(required = false) String displayName,
+                             @RequestParam(required = false)  String password,
                              @RequestParam(defaultValue = "USER") Role role,
                              @RequestParam String preferred_language,
                              @RequestParam(defaultValue = "METRIC") String unit_system,
@@ -179,14 +189,10 @@ public class UserSettingsController {
         }
         try {
             if (StringUtils.hasText(username) && StringUtils.hasText(displayName) && StringUtils.hasText(password)) {
-                User createdUser = userJdbcService.createUser(username, displayName, password);
-                
-                // Update the user's role if different from default
-                if (USER != role) {
-                    createdUser = createdUser.withRole(role);
-                    createdUser = userJdbcService.updateUser(createdUser);
-                }
-                
+                User createdUser = userJdbcService.createUser(new User(username, displayName)
+                        .withPassword(passwordEncoder.encode(password))
+                        .withRole(role));
+
                 UnitSystem unitSystem = UnitSystem.valueOf(unit_system);
                 UserSettings userSettings = new UserSettings(createdUser.getId(), preferColoredMap, preferred_language, unitSystem, homeLatitude, homeLongitude, null);
                 userSettingsJdbcService.save(userSettings);
@@ -217,8 +223,8 @@ public class UserSettingsController {
 
     @PostMapping("/users/update")
     public String updateUser(@RequestParam Long userId,
-                             @RequestParam String username,
-                             @RequestParam String displayName,
+                             @RequestParam(required = false)  String username,
+                             @RequestParam(required = false)  String displayName,
                              @RequestParam(required = false) String password,
                              @RequestParam(defaultValue = "USER") Role role,
                              @RequestParam String preferred_language,
@@ -254,8 +260,15 @@ public class UserSettingsController {
             if (password != null && !password.trim().isEmpty()) {
                 encodedPassword = passwordEncoder.encode(password);
             }
-            
-            User updatedUser = new User(existingUser.getId(), username, encodedPassword, displayName, role, existingUser.getVersion());
+
+            if (username == null || username.trim().isEmpty()) {
+                username = existingUser.getUsername();
+            }
+            if (displayName == null || displayName.trim().isEmpty()) {
+                displayName = existingUser.getDisplayName();
+            }
+
+            User updatedUser = new User(existingUser.getId(), username, encodedPassword, displayName, existingUser.getProfileUrl(), existingUser.getExternalId(), role, existingUser.getVersion());
             userJdbcService.updateUser(updatedUser);
             
             UserSettings existingSettings = userSettingsJdbcService.findByUserId(userId)
@@ -329,9 +342,13 @@ public class UserSettingsController {
         }
         if (userId != null) {
             model.addAttribute("userId", userId);
+            User user = userJdbcService.findById(userId).orElse(null);
             model.addAttribute("username", username);
             model.addAttribute("displayName", displayName);
             model.addAttribute("selectedRole", role);
+            model.addAttribute("externallyManaged", user != null && user.getExternalId() != null && oidcEnabled);
+            model.addAttribute("externalProfile", user != null ? user.getProfileUrl() : null);
+            model.addAttribute("localLoginDisabled", localLoginDisabled);
             UserSettings userSettings = userSettingsJdbcService.findByUserId(userId).orElse(UserSettings.defaultSettings(userId));
             model.addAttribute("selectedLanguage", userSettings.getSelectedLanguage());
             model.addAttribute("selectedUnitSystem", userSettings.getUnitSystem().name());
@@ -346,6 +363,9 @@ public class UserSettingsController {
             model.addAttribute("selectedRole", "USER");
             model.addAttribute("homeLatitude", null);
             model.addAttribute("homeLongitude", null);
+            model.addAttribute("externallyManaged", false);
+            model.addAttribute("externalProfile", null);
+            model.addAttribute("localLoginDisabled", localLoginDisabled);
         }
         
         // Add available unit systems to model
@@ -366,71 +386,6 @@ public class UserSettingsController {
         return "fragments/user-management :: user-form-page";
     }
 
-    private String generateRandomColor() {
-        // Generate a random bright color in hex RGB format
-        java.util.Random random = new java.util.Random();
-        
-        // Generate bright colors by ensuring high saturation and medium-high lightness
-        float hue = random.nextFloat(); // 0.0 to 1.0
-        float saturation = 0.7f + random.nextFloat() * 0.3f; // 0.7 to 1.0
-        float brightness = 0.5f + random.nextFloat() * 0.4f; // 0.5 to 0.9
-        
-        // Convert HSB to RGB without using java.awt
-        int rgb = hsbToRgb(hue, saturation, brightness);
-        
-        // Convert to hex string
-        return String.format("#%06X", rgb & 0xFFFFFF);
-    }
-    
-    private int hsbToRgb(float hue, float saturation, float brightness) {
-        int r = 0, g = 0, b = 0;
-        
-        if (saturation == 0) {
-            r = g = b = (int) (brightness * 255.0f + 0.5f);
-        } else {
-            float h = (hue - (float) Math.floor(hue)) * 6.0f;
-            float f = h - (float) Math.floor(h);
-            float p = brightness * (1.0f - saturation);
-            float q = brightness * (1.0f - saturation * f);
-            float t = brightness * (1.0f - (saturation * (1.0f - f)));
-            
-            switch ((int) h) {
-                case 0:
-                    r = (int) (brightness * 255.0f + 0.5f);
-                    g = (int) (t * 255.0f + 0.5f);
-                    b = (int) (p * 255.0f + 0.5f);
-                    break;
-                case 1:
-                    r = (int) (q * 255.0f + 0.5f);
-                    g = (int) (brightness * 255.0f + 0.5f);
-                    b = (int) (p * 255.0f + 0.5f);
-                    break;
-                case 2:
-                    r = (int) (p * 255.0f + 0.5f);
-                    g = (int) (brightness * 255.0f + 0.5f);
-                    b = (int) (t * 255.0f + 0.5f);
-                    break;
-                case 3:
-                    r = (int) (p * 255.0f + 0.5f);
-                    g = (int) (q * 255.0f + 0.5f);
-                    b = (int) (brightness * 255.0f + 0.5f);
-                    break;
-                case 4:
-                    r = (int) (t * 255.0f + 0.5f);
-                    g = (int) (p * 255.0f + 0.5f);
-                    b = (int) (brightness * 255.0f + 0.5f);
-                    break;
-                case 5:
-                    r = (int) (brightness * 255.0f + 0.5f);
-                    g = (int) (p * 255.0f + 0.5f);
-                    b = (int) (q * 255.0f + 0.5f);
-                    break;
-            }
-        }
-        
-        return 0xff000000 | (r << 16) | (g << 8) | (b);
-    }
-    
     private void handleAvatarUpload(MultipartFile avatar, Long userId, Model model) {
         if (avatar != null && !avatar.isEmpty()) {
             try {

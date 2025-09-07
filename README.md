@@ -212,6 +212,7 @@ The included `docker-compose.yml` provides a complete setup with:
 | `OIDC_CLIENT_SECRET`       | Your OpenID Connect Client secret (from your provider)                                                                                                                          |                | F0oxfg8b2rp5X97YPS92C2ERxof1oike          |
 | `OIDC_ISSUER_URI`          | Your OpenID Connect Provider Discovery URI (don't include the /.well-known/openid-configuration part of the URI)                                                                |                | https://github.com/login/oauth            |
 | `OIDC_SCOPE`               | Your OpenID Connect scopes for your user (optional)                                                                                                                             | openid,profile | openid,profile                            |
+| `OIDC_SIGN_UP_ENABLED`     | Whether new users should be signed up automatically if they first login via the OIDC Provider. (optional)                                                                       | true           | false                                     |
 | `PHOTON_BASE_URL`          | Base URL for Photon geocoding service                                                                                                                                           |                |                                           |
 | `PROCESSING_WAIT_TIME`     | How many seconds to wait after the last data input before starting to process all unprocessed data. (⚠️ This needs to be lower than your integrated app reports data in Reitti) | 15             | 15                                        |
 | `DANGEROUS_LIFE`           | Enables data management features that can reset/delete all database data (⚠️ USE WITH CAUTION)                                                                                  | false          | true                                      |
@@ -346,14 +347,14 @@ Use both Photon and external services for maximum reliability.
 
 ### Choosing the Right Option
 
-| Requirement | Photon Only | External Only | Hybrid |
-|-------------|-------------|---------------|--------|
-| **Privacy** | ✅ Complete | ❌ Limited | ⚠️ Partial |
-| **Performance** | ✅ Fastest | ❌ Network dependent | ✅ Fast with fallback |
-| **Storage** | ❌ High (1-200GB) | ✅ None | ❌ High (1-200GB) |
-| **Setup Time** | ❌ Hours to days | ✅ Immediate | ❌ Hours to days |
-| **Reliability** | ⚠️ Single point | ⚠️ External dependency | ✅ Multiple sources |
-| **Cost** | ✅ Free | ⚠️ May have limits | ✅ Free with backup |
+| Requirement     | Photon Only      | External Only          | Hybrid               |
+|-----------------|------------------|------------------------|----------------------|
+| **Privacy**     | ✅ Complete       | ❌ Limited              | ⚠️ Partial           |
+| **Performance** | ✅ Fastest        | ❌ Network dependent    | ✅ Fast with fallback |
+| **Storage**     | ❌ High (1-200GB) | ✅ None                 | ❌ High (1-200GB)     |
+| **Setup Time**  | ❌ Hours to days  | ✅ Immediate            | ❌ Hours to days      |
+| **Reliability** | ⚠️ Single point  | ⚠️ External dependency | ✅ Multiple sources   |
+| **Cost**        | ✅ Free           | ⚠️ May have limits     | ✅ Free with backup   |
 
 ### Initial Setup Considerations
 
@@ -379,6 +380,8 @@ Reitti supports using a third party OIDC provider for sign-ins. It provides the 
 
 Setting `OIDC_ENABLED = true` enables OIDC, whereas the remaining need to be found from your OIDC provider, e.g. github. See the [Environment Variables](#environment-variables) section for examples.
 
+For detailed OIDC configuration instructions and provider-specific examples, see the [OIDC documentation](https://www.dedicatedcode.com/projects/reitti/oidc/).
+
 There are two URLs provided by reitti that you should give to your OIDC provider (see their documentation for further information on this), one of which is required.
 - (Required) Callback URL: https://<your-reitti-url>/login/oauth2/code/oauth (e.g. `https://reitti.internal/login/oauth2/code/oauth`)
 - (Optional) Logout callback URL: https://<your-reitti-url>/logout/connect/back-channel/oauth
@@ -386,15 +389,43 @@ There are two URLs provided by reitti that you should give to your OIDC provider
 The logout callback URL will allow your OIDC provider to sign you out of Reitti when you sign out from your provider. If you don't set it, you will have to manually sign out of Reitti even if you sign out from your OIDC provider.
 
 ### Login Requirements
-We don't support sign-ups via OIDC, so in order to sign in you will first have to create a user account in Reitti.
-This user **must** have a matching username to the username provided by your OIDC provider, commonly referred to as the `preferred_username`.
 
-E.g. If you have the username "myusername" with your OIDC provider, create a user in Reitti with the username "myusername". The "Display Name" can be set freely.
+Reitti's OIDC authentication follows a flexible user matching and creation process:
 
-**Note for Google accounts**: Google accounts use the email address as the `preferred_username`, so if you're using gmail you'd create an account with the username "myemail@gmail.com".
+#### User Matching Process
+1. **Primary Match**: First attempts to find an existing user by `external_id` (format: `{issuer}:{subject}`)
+2. **Fallback Match**: If no external_id match, searches for a user with the OIDC `preferred_username`
+3. **Account Linking**: When a username match is found, the account is updated with the external_id for future logins
+
+#### User Creation
+- **Automatic Registration**: When `OIDC_SIGN_UP_ENABLED=true` (default), new users are automatically created if no match is found
+- **Registration Disabled**: When `OIDC_SIGN_UP_ENABLED=false`, login fails with an error if no existing user matches
+
+#### User Data Handling
+- **Username**: Set to the OIDC `preferred_username` 
+- **Display Name**: Updated from OIDC `name` claim on each login
+- **External ID**: Set to `{issuer}:{subject}` for permanent account linking
+- **Profile URL**: Updated from OIDC `profile` claim if available
+- **Avatar**: Automatically downloaded from OIDC `picture` claim if provided
+
+#### Password Management
+- **Local Login Enabled** (`DISABLE_LOCAL_LOGIN=false`): Existing passwords are preserved, allowing both OIDC and local authentication
+- **Local Login Disabled** (`DISABLE_LOCAL_LOGIN=true`): Passwords are cleared from accounts to enforce OIDC-only authentication
+
+#### Required OIDC Claims
+Your OIDC provider must provide these claims for successful authentication:
+- `sub` (subject) Required for external_id generation
+- `preferred_username` - Required for username assignment
+- `name` - Recommended for display name
+- `profile` - Optional for profile URL
+- `picture` - Optional for avatar download
+
+#### Security Considerations
+- External IDs are immutable once set, ensuring account security even if usernames change in the OIDC provider
+- User data is updated on each login to keep information current
+- Avatar downloads are performed securely with error handling for network failures
 
 ## Technologies
-
 
 ## Backup & Data Persistence
 
@@ -421,14 +452,18 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 There are multiple ways of getting support:
 
-- either create a [new issue](https://github.com/dedicatedcode/reitti/issues/new/choose)
-- tag me on [https://discuss.tchncs.de/u/danielgraf](Lemmy)
+- create a [new issue](https://github.com/dedicatedcode/reitti/issues/new/choose)
+- tag me on [Lemmy](https://discuss.tchncs.de/u/danielgraf)
 - or join **#reitti** on [irc.dedicatedcode.com](https://irc.dedicatedcode.com)
 
 ## Support the Project
 
 <a href='https://ko-fi.com/K3K01HDAUW' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi6.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
 
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=dedicatedcode/reitti&type=Date)](https://www.star-history.com/#dedicatedcode/reitti&Date)
+
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License, see the LICENSE file for details.

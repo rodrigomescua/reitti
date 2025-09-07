@@ -46,11 +46,19 @@ public class UserSettingsControllerTest {
         return "user_" + UUID.randomUUID().toString().replace("-", "").substring(0, 8);
     }
 
+    private User createTestUser(String username, String displayName, String password) {
+        User user = new User()
+                .withUsername(username)
+                .withDisplayName(displayName)
+                .withPassword(password);
+        return userJdbcService.createUser(user);
+    }
+
     @Test
     void getUsersContent_AsRegularUser_ShouldReturnUserForm() throws Exception {
         // Create the test user as a regular user
         String testUsername = randomUsername();
-        userJdbcService.createUser(testUsername, "Test User", "password");
+        createTestUser(testUsername, "Test User", "password");
         
         mockMvc.perform(get("/settings/users-content")
                         .with(user(testUsername)))
@@ -66,7 +74,7 @@ public class UserSettingsControllerTest {
     void getUsersContent_AsAdmin_ShouldReturnUsersList() throws Exception {
         // Create the admin user
         String adminUsername = randomUsername();
-        User adminUser = userJdbcService.createUser(adminUsername, "Admin User", "password");
+        User adminUser = createTestUser(adminUsername, "Admin User", "password");
         adminUser = adminUser.withRole(Role.ADMIN);
         userJdbcService.updateUser(adminUser);
         
@@ -84,7 +92,7 @@ public class UserSettingsControllerTest {
     void createUser_AsAdmin_ShouldCreateNewUser() throws Exception {
         // Create the admin user
         String adminUsername = randomUsername();
-        User adminUser = userJdbcService.createUser(adminUsername, "Admin User", "password");
+        User adminUser = createTestUser(adminUsername, "Admin User", "password");
         adminUser = adminUser.withRole(Role.ADMIN);
         userJdbcService.updateUser(adminUser);
         
@@ -124,7 +132,7 @@ public class UserSettingsControllerTest {
     void createUser_AsRegularUser_ShouldShowAccessDenied() throws Exception {
         // Create the test user as a regular user
         String testUsername = randomUsername();
-        userJdbcService.createUser(testUsername, "Test User", "password");
+        createTestUser(testUsername, "Test User", "password");
         
         String newUsername = randomUsername();
         String newDisplayName = "New User";
@@ -152,7 +160,7 @@ public class UserSettingsControllerTest {
     void createUser_WithInvalidData_ShouldShowError() throws Exception {
         // Create the admin user
         String adminUsername = randomUsername();
-        User adminUser = userJdbcService.createUser(adminUsername, "Admin User", "password");
+        User adminUser = createTestUser(adminUsername, "Admin User", "password");
         adminUser = adminUser.withRole(Role.ADMIN);
         userJdbcService.updateUser(adminUser);
         
@@ -175,7 +183,7 @@ public class UserSettingsControllerTest {
     void updateUser_AsAdmin_ShouldUpdateExistingUser() throws Exception {
         // Create the admin user
         String adminUsername = randomUsername();
-        User adminUser = userJdbcService.createUser(adminUsername, "Admin User", "password");
+        User adminUser = createTestUser(adminUsername, "Admin User", "password");
         adminUser = adminUser.withRole(Role.ADMIN);
         userJdbcService.updateUser(adminUser);
         
@@ -183,7 +191,8 @@ public class UserSettingsControllerTest {
         String originalUsername = randomUsername();
         String originalDisplayName = "Update User";
         String originalPassword = "password123";
-        userJdbcService.createUser(originalUsername, originalDisplayName, originalPassword);
+
+        userJdbcService.createUser(new User(originalUsername, originalDisplayName).withPassword(originalPassword));
 
         User createdUser = userJdbcService.findByUsername(originalUsername).orElseThrow();
         Long userId = createdUser.getId();
@@ -219,7 +228,7 @@ public class UserSettingsControllerTest {
     void deleteUser_AsAdmin_ShouldDeleteUser() throws Exception {
         // Create the admin user
         String adminUsername = randomUsername();
-        User adminUser = userJdbcService.createUser(adminUsername, "Admin User", "password");
+        User adminUser = createTestUser(adminUsername, "Admin User", "password");
         adminUser = adminUser.withRole(Role.ADMIN);
         userJdbcService.updateUser(adminUser);
         
@@ -227,7 +236,7 @@ public class UserSettingsControllerTest {
         String usernameToDelete = randomUsername();
         String displayName = "Delete User";
         String password = "password123";
-        userJdbcService.createUser(usernameToDelete, displayName, password);
+        createTestUser(usernameToDelete, displayName, password);
 
         User createdUser = userJdbcService.findByUsername(usernameToDelete).orElseThrow();
         Long userId = createdUser.getId();
@@ -252,13 +261,13 @@ public class UserSettingsControllerTest {
     void deleteUser_AsRegularUser_ShouldShowAccessDenied() throws Exception {
         // Create the test user as a regular user
         String testUsername = randomUsername();
-        userJdbcService.createUser(testUsername, "Test User", "password");
+        createTestUser(testUsername, "Test User", "password");
         
         // Create another user to try to delete
         String usernameToDelete = randomUsername();
         String displayName = "Delete User";
         String password = "password123";
-        userJdbcService.createUser(usernameToDelete, displayName, password);
+        createTestUser(usernameToDelete, displayName, password);
 
         User createdUser = userJdbcService.findByUsername(usernameToDelete).orElseThrow();
         Long userId = createdUser.getId();
@@ -280,7 +289,7 @@ public class UserSettingsControllerTest {
         String currentUsername = randomUsername();
         String displayName = "Test User";
         String password = "password123";
-        userJdbcService.createUser(currentUsername, displayName, password);
+        createTestUser(currentUsername, displayName, password);
 
         User currentUser = userJdbcService.findByUsername(currentUsername).orElseThrow();
         Long userId = currentUser.getId();
@@ -301,7 +310,7 @@ public class UserSettingsControllerTest {
     void getUserForm_AsAdmin_WithoutUserId_ShouldReturnEmptyForm() throws Exception {
         // Create the admin user
         String adminUsername = randomUsername();
-        User adminUser = userJdbcService.createUser(adminUsername, "Admin User", "password");
+        User adminUser = createTestUser(adminUsername, "Admin User", "password");
         adminUser = adminUser.withRole(Role.ADMIN);
         userJdbcService.updateUser(adminUser);
         
@@ -319,7 +328,7 @@ public class UserSettingsControllerTest {
     void getUserForm_AsRegularUser_WithoutUserId_ShouldShowAccessDenied() throws Exception {
         // Create the test user as a regular user
         String testUsername = randomUsername();
-        userJdbcService.createUser(testUsername, "Test User", "password");
+        createTestUser(testUsername, "Test User", "password");
         
         mockMvc.perform(get("/settings/user-form")
                         .with(user(testUsername)))
@@ -332,7 +341,7 @@ public class UserSettingsControllerTest {
     void getUserForm_AsAdmin_WithUserId_ShouldReturnPopulatedForm() throws Exception {
         // Create the admin user
         String adminUsername = randomUsername();
-        User adminUser = userJdbcService.createUser(adminUsername, "Admin User", "password");
+        User adminUser = createTestUser(adminUsername, "Admin User", "password");
         adminUser = adminUser.withRole(Role.ADMIN);
         userJdbcService.updateUser(adminUser);
         
@@ -364,7 +373,7 @@ public class UserSettingsControllerTest {
         String currentUsername = randomUsername();
         String displayName = "Test User";
         String password = "password123";
-        userJdbcService.createUser(currentUsername, displayName, password);
+        createTestUser(currentUsername, displayName, password);
 
         User currentUser = userJdbcService.findByUsername(currentUsername).orElseThrow();
         Long userId = currentUser.getId();
@@ -397,7 +406,7 @@ public class UserSettingsControllerTest {
     void getUserForm_AsAdmin_WithoutUserId_ShouldIncludeAvailableUsers() throws Exception {
         // Create the admin user
         String adminUsername = randomUsername();
-        User adminUser = userJdbcService.createUser(adminUsername, "Admin User", "password");
+        User adminUser = createTestUser(adminUsername, "Admin User", "password");
         adminUser = adminUser.withRole(Role.ADMIN);
         userJdbcService.updateUser(adminUser);
         
