@@ -10,19 +10,22 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.RequestMapping;
 
+import java.util.List;
+
 @Controller
 public class CustomErrorController implements ErrorController {
 
     private static final Logger log = LoggerFactory.getLogger(CustomErrorController.class);
+    private static final List<String> IGNORED_PATHS = List.of("/favicon.ico", "/js/", "/img/");
 
     @RequestMapping("/error")
     public String handleError(HttpServletRequest request, Model model) {
         Object status = request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE);
         Object errorMessage = request.getAttribute(RequestDispatcher.ERROR_MESSAGE);
         Object exception = request.getAttribute(RequestDispatcher.ERROR_EXCEPTION);
-        Object requestUri = request.getAttribute(RequestDispatcher.ERROR_REQUEST_URI);
+        String requestUri = (String) request.getAttribute(RequestDispatcher.ERROR_REQUEST_URI);
 
-        if (requestUri.toString().equals("/favicon.ico")) {
+        if (IGNORED_PATHS.stream().anyMatch(requestUri::startsWith)) {
             return null;
         }
         if (status != null) {

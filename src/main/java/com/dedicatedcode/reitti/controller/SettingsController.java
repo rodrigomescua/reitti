@@ -34,6 +34,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.ZoneId;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -322,7 +323,7 @@ public class SettingsController {
                     significantPlace.getLatitudeCentroid(),
                     significantPlace.getLongitudeCentroid()
                 );
-                rabbitTemplate.convertAndSend(RabbitMQConfig.SIGNIFICANT_PLACE_QUEUE, event);
+                rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.SIGNIFICANT_PLACE_ROUTING_KEY, event);
 
                 model.addAttribute("successMessage", getMessage("places.geocode.success"));
             } catch (Exception e) {
@@ -819,7 +820,7 @@ public class SettingsController {
                         place.getLatitudeCentroid(),
                         place.getLongitudeCentroid()
                     );
-                    rabbitTemplate.convertAndSend(RabbitMQConfig.SIGNIFICANT_PLACE_QUEUE, event);
+                    rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.SIGNIFICANT_PLACE_ROUTING_KEY, event);
                 }
                 
                 model.addAttribute("successMessage", getMessage("geocoding.run.success", nonGeocodedPlaces.size()));
@@ -859,7 +860,7 @@ public class SettingsController {
                         place.getLatitudeCentroid(),
                         place.getLongitudeCentroid()
                     );
-                    rabbitTemplate.convertAndSend(RabbitMQConfig.SIGNIFICANT_PLACE_QUEUE, event);
+                    rabbitTemplate.convertAndSend(RabbitMQConfig.EXCHANGE_NAME, RabbitMQConfig.SIGNIFICANT_PLACE_ROUTING_KEY, event);
                 }
                 
                 model.addAttribute("successMessage", getMessage("geocoding.clear.success", allPlaces.size()));
@@ -903,8 +904,7 @@ public class SettingsController {
             model.addAttribute("externallyManaged", user.getExternalId() != null && oidcEnabled);
             model.addAttribute("externalProfile", user.getProfileUrl());
             model.addAttribute("localLoginDisabled", this.localLoginDisabled);
-            UserSettings userSettings = userSettingsJdbcService.findByUserId(user.getId())
-                    .orElse(UserSettings.defaultSettings(user.getId()));
+            UserSettings userSettings = userSettingsJdbcService.findByUserId(user.getId()).orElse(UserSettings.defaultSettings(user.getId()));
             model.addAttribute("selectedLanguage", userSettings.getSelectedLanguage());
             model.addAttribute("selectedUnitSystem", userSettings.getUnitSystem().name());
             model.addAttribute("preferColoredMap", userSettings.isPreferColoredMap());
@@ -912,6 +912,10 @@ public class SettingsController {
             model.addAttribute("homeLongitude", userSettings.getHomeLongitude());
             model.addAttribute("unitSystems", UnitSystem.values());
             model.addAttribute("isAdmin", false);
+            model.addAttribute("timeZoneOverride", userSettings.getTimeZoneOverride());
+            model.addAttribute("timeDisplayMode", userSettings.getTimeDisplayMode().name());
+            model.addAttribute("availableTimezones", ZoneId.getAvailableZoneIds().stream().sorted());
+            model.addAttribute("availableTimeDisplayModes", TimeDisplayMode.values());
 
             // Check if user has avatar
             boolean hasAvatar = this.avatarService.getInfo(user.getId()).isPresent();
